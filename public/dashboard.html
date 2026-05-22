@@ -1971,13 +1971,25 @@ async function syncBankAccounts() {
       method: 'POST',
       headers: { 'Authorization': 'Bearer ' + session.access_token }
     });
-    const json = await res.json();
-    if (!res.ok) throw new Error(json.error || 'Sync failed');
+
+    // Read as text first — server might return HTML on crash
+    const raw = await res.text();
+    let json;
+    try { json = JSON.parse(raw); }
+    catch(e) {
+      // Server returned non-JSON (HTML error page) — show the first 200 chars
+      const preview = raw.replace(/<[^>]+>/g, '').trim().slice(0, 200);
+      throw new Error('Server error: ' + (preview || 'unknown — check Vercel function logs'));
+    }
+
+    if (!res.ok) throw new Error(json.error || json.detail || 'Sync failed');
+
     // Reload state from cloud to get the new transactions
     await loadStateCloud();
     renderAll();
     toast(`🏦 Sync complete — ${json.newTransactions} new transaction${json.newTransactions !== 1 ? 's' : ''}`);
   } catch(e) {
+    console.error('[syncBankAccounts]', e);
     toast('❌ ' + e.message);
   } finally {
     if (btn) { btn.textContent = '🏦 Sync Bank'; btn.disabled = false; }
