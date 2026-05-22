@@ -130,8 +130,9 @@ module.exports = async (req, res) => {
     try   { sfData = JSON.parse(sfTxt); }
     catch { return res.status(502).json({ error: 'SimpleFIN returned non-JSON.', detail: sfTxt.slice(0, 200) }); }
 
+    // Log SimpleFIN warnings but don't abort — they're informational (e.g. date range capped)
     if (sfData.errors?.length) {
-      return res.status(502).json({ error: 'SimpleFIN errors', details: sfData.errors });
+      console.warn('[sync] SimpleFIN warnings:', sfData.errors);
     }
 
     // ── Transform ─────────────────────────────────────────────
