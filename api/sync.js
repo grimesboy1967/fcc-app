@@ -1,95 +1,129 @@
 /**
- * POST /api/sync
- * Fetches latest transactions from SimpleFIN Bridge and merges them
- * into the user's Supabase state.
- *
- * Client must send:  Authorization: Bearer <supabase-jwt>
+ * POST /api/sync  — zero npm dependencies, native fetch only
+ * Fetches transactions from SimpleFIN Bridge → merges into Supabase state.
+ * Authorization: Bearer <supabase-jwt>
  */
 
-const { createClient } = require('@supabase/supabase-js');
-
 module.exports = async (req, res) => {
-  // ── CORS preflight ───────────────────────────────────────────
-  if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== 'POST' && req.method !== 'GET') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-
-  // ── Auth ─────────────────────────────────────────────────────
-  const token = (req.headers.authorization || '').replace('Bearer ', '').trim();
-  if (!token) return res.status(401).json({ error: 'Missing Authorization header' });
-
-  const sb = createClient(
-    process.env.SUPABASE_URL,
-    process.env.SUPABASE_ANON_KEY,
-    { global: { headers: { Authorization: `Bearer ${token}` } } }
-  );
-
-  const { data: { user }, error: authErr } = await sb.auth.getUser();
-  if (authErr || !user) return res.status(401).json({ error: 'Invalid token' });
+  res.setHeader('Content-Type', 'application/json');
 
   try {
-    // ── Get / claim SimpleFIN access URL ─────────────────────
-    let { data: sfRow } = await sb
-      .from('simplefin_config')
-      .select('*')
-      .eq('user_id', user.id)
-      .maybeSingle();
+    if (req.method === 'OPTIONS') return res.status(200).end();
 
-    let accessUrl = sfRow?.access_url;
+    // ── Required env vars ────────────────────────────────────
+    const SB_URL   = process.env.SUPABASE_URL;
+    const SB_KEY   = process.env.SUPABASE_ANON_KEY;
+    const SF_CLAIM = process.env.SIMPLEFIN_CLAIM_URL;
 
-    if (!accessUrl) {
-      const claimUrl = process.env.SIMPLEFIN_CLAIM_URL;
-      if (!claimUrl) {
-        return res.status(400).json({
-          error: 'SIMPLEFIN_CLAIM_URL not set in Vercel environment variables.'
-        });
-      }
+    const missing = [
+      !SB_URL   && 'SUPABASE_URL',
+      !SB_KEY   && 'SUPABASE_ANON_KEY',
+      !SF_CLAIM && 'SIMPLEFIN_CLAIM_URL'
+    ].filter(Boolean);
 
-      // One-time claim POST
-      const claimRes = await fetch(claimUrl, { method: 'POST' });
-      if (!claimRes.ok) {
-        const body = await claimRes.text();
-        return res.status(400).json({
-          error: `SimpleFIN claim failed (${claimRes.status}). The claim URL may have already been used.`,
-          detail: body
-        });
-      }
-      accessUrl = (await claimRes.text()).trim();
-
-      await sb.from('simplefin_config').upsert(
-        { user_id: user.id, access_url: accessUrl, last_synced: null },
-        { onConflict: 'user_id' }
-      );
-    }
-
-    // ── Determine date range ──────────────────────────────────
-    const startEpoch = sfRow?.last_synced
-      ? Math.floor(new Date(sfRow.last_synced).getTime() / 1000)
-      : Math.floor((Date.now() - 90 * 24 * 60 * 60 * 1000) / 1000); // 90 days default
-
-    // ── Fetch from SimpleFIN ──────────────────────────────────
-    // accessUrl looks like: https://user:pass@beta-bridge.simplefin.org/simplefin
-    const sfAccountsUrl = accessUrl.replace(/\/$/, '') + `/accounts?start-date=${startEpoch}`;
-
-    const sfRes = await fetch(sfAccountsUrl);
-    if (!sfRes.ok) {
-      const body = await sfRes.text();
-      return res.status(502).json({
-        error: `SimpleFIN fetch failed (${sfRes.status})`,
-        detail: body
+    if (missing.length) {
+      return res.status(500).json({
+        error: `Missing Vercel environment variables: ${missing.join(', ')}. ` +
+               'Go to Vercel → Project Settings → Environment Variables, add them, then redeploy.'
       });
     }
 
-    const sfData = await sfRes.json();
+    // ── Auth ─────────────────────────────────────────────────
+    const token = (req.headers.authorization || '').replace('Bearer ', '').trim();
+    if (!token) return res.status(401).json({ error: 'Missing Authorization header' });
 
-    if (sfData.errors?.length > 0) {
+    // Verify JWT via Supabase Auth REST API
+    const userRes  = await fetch(`${SB_URL}/auth/v1/user`, {
+      headers: { Authorization: `Bearer ${token}`, apikey: SB_KEY }
+    });
+    if (!userRes.ok) {
+      const body = await userRes.text();
+      return res.status(401).json({ error: 'Invalid auth token', detail: body.slice(0, 200) });
+    }
+    const { id: userId } = await userRes.json();
+
+    // ── Supabase REST helpers (no SDK needed) ─────────────────
+    const hdrs = {
+      Authorization:  `Bearer ${token}`,
+      apikey:          SB_KEY,
+      'Content-Type': 'application/json'
+    };
+
+    async function sbSelect(table, filter) {
+      const r = await fetch(`${SB_URL}/rest/v1/${table}?${filter}&select=*`, { headers: hdrs });
+      if (!r.ok) return null;
+      const rows = await r.json();
+      return Array.isArray(rows) ? rows[0] || null : null;
+    }
+
+    async function sbUpsert(table, data) {
+      const r = await fetch(`${SB_URL}/rest/v1/${table}`, {
+        method:  'POST',
+        headers: { ...hdrs, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body:    JSON.stringify(data)
+      });
+      if (!r.ok) {
+        const t = await r.text();
+        throw new Error(`Supabase upsert ${table} failed (${r.status}): ${t.slice(0, 200)}`);
+      }
+    }
+
+    // ── Get or claim SimpleFIN access URL ─────────────────────
+    let sfRow     = await sbSelect('simplefin_config', `user_id=eq.${userId}`);
+    let accessUrl = sfRow?.access_url;
+
+    if (!accessUrl) {
+      const claimRes  = await fetch(SF_CLAIM, { method: 'POST' });
+      const claimBody = await claimRes.text();
+
+      if (!claimRes.ok) {
+        return res.status(400).json({
+          error: `SimpleFIN claim failed (HTTP ${claimRes.status}). ` +
+                 'The one-time token may already be used. Buy a new one at simplefin.org.',
+          detail: claimBody.slice(0, 300)
+        });
+      }
+
+      accessUrl = claimBody.trim();
+      if (!accessUrl.startsWith('http')) {
+        return res.status(400).json({
+          error: 'SimpleFIN returned unexpected response (not a URL).',
+          detail: accessUrl.slice(0, 200)
+        });
+      }
+
+      await sbUpsert('simplefin_config', {
+        user_id: userId, access_url: accessUrl, last_synced: null
+      });
+    }
+
+    // ── Fetch accounts + transactions from SimpleFIN ───────────
+    const startEpoch = sfRow?.last_synced
+      ? Math.floor(new Date(sfRow.last_synced).getTime() / 1000)
+      : Math.floor((Date.now() - 90 * 24 * 60 * 60 * 1000) / 1000); // 90-day default
+
+    const sfUrl = accessUrl.replace(/\/$/, '') + `/accounts?start-date=${startEpoch}`;
+    const sfRes = await fetch(sfUrl);
+    const sfTxt = await sfRes.text();
+
+    if (!sfRes.ok) {
+      return res.status(502).json({
+        error: `SimpleFIN accounts fetch failed (HTTP ${sfRes.status}).`,
+        detail: sfTxt.slice(0, 400)
+      });
+    }
+
+    let sfData;
+    try   { sfData = JSON.parse(sfTxt); }
+    catch { return res.status(502).json({ error: 'SimpleFIN returned non-JSON.', detail: sfTxt.slice(0, 200) }); }
+
+    if (sfData.errors?.length) {
       return res.status(502).json({ error: 'SimpleFIN errors', details: sfData.errors });
     }
 
-    // ── Transform accounts + transactions ─────────────────────
+    // ── Transform ─────────────────────────────────────────────
     const freshAccounts = [];
-    const freshTxns = [];
+    const freshTxns     = [];
 
     (sfData.accounts || []).forEach(acct => {
       freshAccounts.push({
@@ -102,7 +136,6 @@ module.exports = async (req, res) => {
         currency:         acct.currency || 'USD',
         source:           'simplefin'
       });
-
       (acct.transactions || []).forEach(txn => {
         freshTxns.push({
           id:          'sf_' + txn.id,
@@ -120,49 +153,36 @@ module.exports = async (req, res) => {
       });
     });
 
-    // ── Merge into existing state ─────────────────────────────
-    const { data: stateRow } = await sb
-      .from('user_state')
-      .select('state')
-      .eq('user_id', user.id)
-      .maybeSingle();
-
+    // ── Merge into Supabase state ─────────────────────────────
+    const stateRow = await sbSelect('user_state', `user_id=eq.${userId}`);
     const existing = stateRow?.state || {};
-    const existingTxnIds = new Set((existing.transactions || []).map(t => t.id));
+    const knownIds = new Set((existing.transactions || []).map(t => t.id));
+    const newTxns  = freshTxns.filter(t => !knownIds.has(t.id));
 
-    // Only append truly new transactions
-    const newTxns = freshTxns.filter(t => !existingTxnIds.has(t.id));
-
-    // Upsert accounts by id
     const mergedAccounts = [...(existing.accounts || [])];
     freshAccounts.forEach(fa => {
-      const idx = mergedAccounts.findIndex(a => a.id === fa.id);
-      if (idx >= 0) mergedAccounts[idx] = { ...mergedAccounts[idx], ...fa };
+      const i = mergedAccounts.findIndex(a => a.id === fa.id);
+      if (i >= 0) mergedAccounts[i] = { ...mergedAccounts[i], ...fa };
       else mergedAccounts.push(fa);
     });
 
-    const updatedState = {
-      ...existing,
-      accounts:     mergedAccounts,
-      transactions: [...(existing.transactions || []), ...newTxns]
-    };
+    await sbUpsert('user_state', {
+      user_id:    userId,
+      state:      { ...existing, accounts: mergedAccounts, transactions: [...(existing.transactions || []), ...newTxns] },
+      updated_at: new Date().toISOString()
+    });
 
-    await sb.from('user_state').upsert(
-      { user_id: user.id, state: updatedState, updated_at: new Date().toISOString() },
-      { onConflict: 'user_id' }
-    );
-
-    // Update last_synced
-    await sb.from('simplefin_config').upsert(
-      { user_id: user.id, access_url: accessUrl, last_synced: new Date().toISOString() },
-      { onConflict: 'user_id' }
-    );
+    await sbUpsert('simplefin_config', {
+      user_id:     userId,
+      access_url:  accessUrl,
+      last_synced: new Date().toISOString()
+    });
 
     return res.status(200).json({
-      success:        true,
+      success:         true,
       newTransactions: newTxns.length,
-      accounts:       freshAccounts.length,
-      transactions:   newTxns      // so client can do a toast
+      accounts:        freshAccounts.length,
+      transactions:    newTxns
     });
 
   } catch (err) {
