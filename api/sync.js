@@ -102,8 +102,17 @@ module.exports = async (req, res) => {
       ? Math.floor(new Date(sfRow.last_synced).getTime() / 1000)
       : Math.floor((Date.now() - 90 * 24 * 60 * 60 * 1000) / 1000); // 90-day default
 
-    const sfUrl = accessUrl.replace(/\/$/, '') + `/accounts?start-date=${startEpoch}`;
-    const sfRes = await fetch(sfUrl);
+    // Node 18 fetch rejects URLs with embedded credentials (user:pass@host).
+    // Extract them and send as a Basic Auth header instead.
+    const sfParsed  = new URL(accessUrl);
+    const sfCreds   = Buffer.from(`${sfParsed.username}:${sfParsed.password}`).toString('base64');
+    sfParsed.username = '';
+    sfParsed.password = '';
+    const sfUrl = sfParsed.toString().replace(/\/$/, '') + `/accounts?start-date=${startEpoch}`;
+
+    const sfRes = await fetch(sfUrl, {
+      headers: { Authorization: `Basic ${sfCreds}` }
+    });
     const sfTxt = await sfRes.text();
 
     if (!sfRes.ok) {
