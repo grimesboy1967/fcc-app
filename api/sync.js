@@ -102,17 +102,21 @@ module.exports = async (req, res) => {
       ? Math.floor(new Date(sfRow.last_synced).getTime() / 1000)
       : Math.floor((Date.now() - 90 * 24 * 60 * 60 * 1000) / 1000); // 90-day default
 
-    // Node 18 fetch rejects URLs with embedded credentials (user:pass@host).
-    // Extract them and send as a Basic Auth header instead.
-    const sfParsed  = new URL(accessUrl);
-    const sfCreds   = Buffer.from(`${sfParsed.username}:${sfParsed.password}`).toString('base64');
-    sfParsed.username = '';
-    sfParsed.password = '';
-    const sfUrl = sfParsed.toString().replace(/\/$/, '') + `/accounts?start-date=${startEpoch}`;
+    // Node 18 fetch rejects URLs with embedded credentials (https://user:pass@host).
+    // Use regex to extract credentials and build a clean URL, then send Basic auth header.
+    let sfFetchUrl, sfAuthHeader;
+    const credMatch = accessUrl.match(/^(https?:\/\/)([^:@\s]+):([^@\s]+)@(.+)$/);
+    if (credMatch) {
+      const [, scheme, user, pass, hostPath] = credMatch;
+      sfFetchUrl  = (scheme + hostPath).replace(/\/$/, '') + `/accounts?start-date=${startEpoch}`;
+      sfAuthHeader = 'Basic ' + Buffer.from(`${user}:${pass}`).toString('base64');
+    } else {
+      // No credentials in URL — use as-is
+      sfFetchUrl  = accessUrl.replace(/\/$/, '') + `/accounts?start-date=${startEpoch}`;
+      sfAuthHeader = null;
+    }
 
-    const sfRes = await fetch(sfUrl, {
-      headers: { Authorization: `Basic ${sfCreds}` }
-    });
+    const sfRes = await fetch(sfFetchUrl, sfAuthHeader ? { headers: { Authorization: sfAuthHeader } } : {});
     const sfTxt = await sfRes.text();
 
     if (!sfRes.ok) {
