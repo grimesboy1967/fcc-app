@@ -56,8 +56,8 @@ module.exports = async (req, res) => {
       return Array.isArray(rows) ? rows[0] || null : null;
     }
 
-    async function sbUpsert(table, data) {
-      const r = await fetch(`${SB_URL}/rest/v1/${table}`, {
+    async function sbUpsert(table, data, conflictCol = 'user_id') {
+      const r = await fetch(`${SB_URL}/rest/v1/${table}?on_conflict=${conflictCol}`, {
         method:  'POST',
         headers: { ...hdrs, Prefer: 'resolution=merge-duplicates,return=minimal' },
         body:    JSON.stringify(data)
