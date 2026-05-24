@@ -1551,6 +1551,40 @@
   </div>
 </div>
 
+<!-- Itemize Modal -->
+<div class="modal-overlay" id="itemize-modal">
+  <div class="modal" style="max-width:700px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div>
+        <h2 style="margin:0">📋 <span id="itemize-title">Payment History</span></h2>
+        <div id="itemize-subtitle" style="font-size:13px;color:#64748b;margin-top:3px"></div>
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="closeModal('itemize-modal')">✕ Close</button>
+    </div>
+    <div id="itemize-summary" style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap"></div>
+    <input type="text" id="itemize-search" placeholder="Filter transactions…"
+      oninput="renderItemizeTable()"
+      style="width:100%;padding:8px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;margin-bottom:12px">
+    <div style="max-height:380px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:8px">
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead>
+          <tr style="background:#f8fafc;position:sticky;top:0">
+            <th style="padding:10px 12px;text-align:left;color:#64748b;font-weight:600;border-bottom:1px solid #e2e8f0">Date</th>
+            <th style="padding:10px 12px;text-align:left;color:#64748b;font-weight:600;border-bottom:1px solid #e2e8f0">Description</th>
+            <th style="padding:10px 12px;text-align:left;color:#64748b;font-weight:600;border-bottom:1px solid #e2e8f0">Account</th>
+            <th style="padding:10px 12px;text-align:right;color:#64748b;font-weight:600;border-bottom:1px solid #e2e8f0">Amount</th>
+          </tr>
+        </thead>
+        <tbody id="itemize-tbody"></tbody>
+      </table>
+    </div>
+    <div id="itemize-empty" style="display:none;text-align:center;padding:32px;color:#94a3b8">
+      <div style="font-size:32px;margin-bottom:8px">🔍</div>
+      <p>No matching transactions found.<br><small>Transactions are matched by bill name keywords.</small></p>
+    </div>
+  </div>
+</div>
+
 <!-- Link Bill Modal -->
 <div class="modal-overlay" id="link-bill-modal">
   <div class="modal" style="max-width:500px">
@@ -3365,6 +3399,86 @@ function togglePaid(id) {
 }
 
 // ============================================================
+// ITEMIZE — Payment history for a bill
+// ============================================================
+let _itemizeBillId = null;
+let _itemizeTxns   = [];
+
+function openItemizeModal(billId) {
+  const bill = S.bills.find(b => b.id === billId);
+  if (!bill) return;
+  _itemizeBillId = billId;
+
+  // Collect bill + all linked children names for keyword matching
+  const group    = [bill, ...S.bills.filter(b => b.linkedTo === billId)];
+  const keywords = group.flatMap(b =>
+    b.name.toLowerCase().split(/\s+/).filter(w => w.length > 2)
+  );
+
+  // Match transactions whose description contains any keyword
+  const allTxns = S.transactions || [];
+  _itemizeTxns  = allTxns.filter(t => {
+    const desc = (t.description || '').toLowerCase();
+    return keywords.some(kw => desc.includes(kw));
+  }).sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  // Summary stats
+  const payments  = _itemizeTxns.filter(t => t.amount < 0);
+  const totalPaid = payments.reduce((s, t) => s + Math.abs(t.amount), 0);
+  const avgPaid   = payments.length ? totalPaid / payments.length : 0;
+
+  document.getElementById('itemize-title').textContent    = bill.name;
+  document.getElementById('itemize-subtitle').textContent =
+    `Matched ${_itemizeTxns.length} transaction${_itemizeTxns.length !== 1 ? 's' : ''} · keywords: ${keywords.slice(0,4).join(', ')}`;
+  document.getElementById('itemize-search').value = '';
+
+  document.getElementById('itemize-summary').innerHTML = [
+    { label: 'Payments Found', val: payments.length,          color: '#1d4ed8' },
+    { label: 'Total Paid',     val: fmt(totalPaid),           color: '#dc2626' },
+    { label: 'Avg Payment',    val: fmt(avgPaid),             color: '#7c3aed' },
+    { label: 'Bill Amount',    val: fmt(bill.amount) + '/mo', color: '#16a34a' },
+  ].map(c => `
+    <div style="flex:1;min-width:120px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px">
+      <div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;margin-bottom:4px">${c.label}</div>
+      <div style="font-size:18px;font-weight:700;color:${c.color}">${c.val}</div>
+    </div>`).join('');
+
+  renderItemizeTable();
+  openModal('itemize-modal');
+}
+
+function renderItemizeTable() {
+  const query    = (document.getElementById('itemize-search')?.value || '').toLowerCase();
+  const filtered = _itemizeTxns.filter(t =>
+    !query ||
+    (t.description || '').toLowerCase().includes(query) ||
+    (t.account || '').toLowerCase().includes(query)
+  );
+
+  const tbody = document.getElementById('itemize-tbody');
+  const empty = document.getElementById('itemize-empty');
+
+  if (!filtered.length) {
+    tbody.innerHTML    = '';
+    empty.style.display = '';
+    return;
+  }
+  empty.style.display = 'none';
+
+  tbody.innerHTML = filtered.map((t, i) => {
+    const isDebit  = t.amount < 0;
+    const amtColor = isDebit ? '#dc2626' : '#16a34a';
+    const amtSign  = isDebit ? '-' : '+';
+    return `<tr style="border-bottom:1px solid #f1f5f9;${i % 2 === 0 ? '' : 'background:#fafafa'}">
+      <td style="padding:9px 12px;white-space:nowrap;color:#64748b">${t.date || '—'}</td>
+      <td style="padding:9px 12px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${t.description || ''}">${t.description || '—'}</td>
+      <td style="padding:9px 12px;color:#94a3b8;font-size:12px">${t.account || '—'}</td>
+      <td style="padding:9px 12px;text-align:right;font-weight:600;color:${amtColor}">${amtSign}${fmt(Math.abs(t.amount))}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ============================================================
 // BILL LINKING
 // ============================================================
 
@@ -3520,6 +3634,7 @@ function renderBills() {
       <td style="white-space:nowrap">
         ${payBtn}
         <button class="btn btn-outline btn-sm" onclick="openStatementHub('${b.id}')" title="Statement Hub">📂 Hub</button>
+        <button class="btn btn-outline btn-sm" onclick="openItemizeModal('${b.id}')" title="View payment history">📋 Itemize</button>
         <button class="btn btn-outline btn-sm" onclick="togglePaid('${b.id}')">${b.paid?'↩ Unmark':'✅ Mark Paid'}</button>
         <button class="btn btn-outline btn-sm" onclick="openLinkModal('${b.id}')" title="Link another bill into this one">🔗</button>
         <button class="btn btn-outline btn-sm" onclick="editBill('${b.id}')">✏️</button>
