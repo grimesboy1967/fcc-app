@@ -643,6 +643,12 @@
 
   <!-- Banking panel -->
   <div id="acc-panel-banking" class="acc-panel">
+    <!-- Live-synced accounts from SimpleFIN (populated by renderAccounts) -->
+    <div id="acc-synced-section" style="display:none;margin-bottom:20px">
+      <div style="font-size:12px;font-weight:700;color:#64748b;letter-spacing:.05em;text-transform:uppercase;margin-bottom:10px">🏦 Live Bank Accounts <span id="acc-synced-asof" style="font-weight:400;text-transform:none;letter-spacing:0;color:#94a3b8"></span></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px" id="acc-grid-synced"></div>
+      <div style="border-top:1px solid #e2e8f0;margin-top:16px;margin-bottom:16px"></div>
+    </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px" id="acc-grid-banking"></div>
     <div style="margin-top:12px;display:flex;gap:8px">
       <button class="btn btn-outline btn-sm" onclick="openNewAccountModal('checking')">+ Checking Account</button>
@@ -5206,6 +5212,47 @@ function renderAccounts() {
   const grp = S.accActiveGroup || 'banking';
   showAccGroup(grp);
 
+  // ── Render SimpleFIN synced accounts ───────────────────────
+  const sfAccts   = S.accounts.filter(a => a.source === 'simplefin');
+  const sfSection = document.getElementById('acc-synced-section');
+  const sfGrid    = document.getElementById('acc-grid-synced');
+  const sfAsOf    = document.getElementById('acc-synced-asof');
+  if (sfGrid && sfSection) {
+    if (sfAccts.length) {
+      sfSection.style.display = '';
+      // Most recent balance date across all synced accounts
+      const latestDate = sfAccts.map(a => a.balanceDate).filter(Boolean).sort().pop();
+      if (sfAsOf && latestDate) {
+        sfAsOf.textContent = '· as of ' + new Date(latestDate).toLocaleDateString('en-US', {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
+      }
+      sfGrid.innerHTML = sfAccts.map(a => {
+        const posted    = parseFloat(a.balance) || 0;
+        const available = parseFloat(a.availableBalance) || 0;
+        const pending   = posted - available; // positive = pending outflows reduce available
+        const color     = posted >= 0 ? '#16a34a' : '#dc2626';
+        return `<div class="card" style="border-left:4px solid #3b82f6">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px">
+            <div>
+              <div style="font-size:13px;font-weight:700;color:#1e293b">${a.name || 'Account'}</div>
+              <div style="font-size:11px;color:#94a3b8">${a.org || ''}</div>
+            </div>
+            <span style="font-size:10px;background:#dbeafe;color:#1d4ed8;padding:2px 8px;border-radius:10px;font-weight:600">SYNCED</span>
+          </div>
+          <div style="margin:10px 0 4px">
+            <div style="font-size:26px;font-weight:800;color:${color}">\$${posted.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+            <div style="font-size:11px;color:#64748b;margin-top:1px">Posted balance · matches online (no pending)</div>
+          </div>
+          ${Math.abs(pending) > 0.005 ? `<div style="margin-top:8px;padding:6px 10px;background:#fef9c3;border-radius:6px;font-size:12px;color:#854d0e">
+            ⏳ ${pending > 0 ? '-' : '+'}$${Math.abs(pending).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})} pending → Available: $${available.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
+          </div>` : ''}
+          ${a.currency && a.currency !== 'USD' ? `<div style="font-size:11px;color:#94a3b8;margin-top:4px">${a.currency}</div>` : ''}
+        </div>`;
+      }).join('');
+    } else {
+      sfSection.style.display = 'none';
+    }
+  }
+
   // Summary stats
   const checking = S.accounts.filter(a => a.type === 'checking').reduce((s, a) => s + (parseFloat(a.balance) || 0), 0);
   const savings   = S.accounts.filter(a => a.type === 'savings').reduce((s, a) => s + (parseFloat(a.balance) || 0), 0);
@@ -7044,9 +7091,28 @@ function refreshOverview() {
     const accBal = S.accounts.filter(a => a.type === 'checking').reduce((s,a) => s + (parseFloat(a.balance)||0), 0);
     if (accBal !== 0) { checkingBal = accBal; checkingLabel = 'From account entries'; }
   }
+  // SimpleFIN synced accounts — use posted balance (excludes pending, matches online)
+  if (checkingBal === null && S.accounts) {
+    const sfAll = S.accounts.filter(a => a.source === 'simplefin');
+    // Prefer accounts with "check" in the name; fall back to all deposit-style accounts
+    const sfCheck = sfAll.filter(a => a.name && a.name.toLowerCase().includes('check'));
+    const sfUse   = sfCheck.length ? sfCheck : sfAll.filter(a => (parseFloat(a.balance)||0) > 0);
+    if (sfUse.length) {
+      checkingBal = sfUse.reduce((s, a) => s + (parseFloat(a.balance) || 0), 0);
+      const latestDate = sfUse.map(a => a.balanceDate).filter(Boolean).sort().pop();
+      checkingLabel = latestDate
+        ? 'Posted balance · ' + new Date(latestDate).toLocaleDateString('en-US', {month:'short', day:'numeric'})
+        : 'Posted balance (bank sync)';
+    }
+  }
   if (checkingBal !== null) {
     checkingEl.textContent = fmt(checkingBal);
     checkingCard.className = 'stat-card ' + (checkingBal >= 0 ? 'green' : 'red');
+    // Update card label: if from SimpleFIN, say "Bank Balance" to cover all account types
+    const cardLabel = checkingCard.querySelector('.label');
+    if (cardLabel) {
+      cardLabel.textContent = checkingLabel.toLowerCase().includes('posted') ? 'Bank Balance' : 'Checking Balance';
+    }
   } else {
     checkingEl.textContent = '—';
     checkingCard.className = 'stat-card';
