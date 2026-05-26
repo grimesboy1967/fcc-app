@@ -7078,32 +7078,36 @@ function refreshOverview() {
   const checkingEl  = document.getElementById('ov-checking');
   const checkingSub = document.getElementById('ov-checking-sub');
   const checkingCard = document.getElementById('ov-checking-card');
-  let checkingBal = null, checkingLabel = 'Import QFX to populate';
-  if (S.qfxMeta && S.qfxMeta.length) {
-    const latestQfx = [...S.qfxMeta].sort((a,b) => a.importedAt.localeCompare(b.importedAt)).pop();
-    if (latestQfx.ledgerBal !== null && latestQfx.ledgerBal !== undefined) {
-      checkingBal   = latestQfx.ledgerBal;
-      const asOf    = latestQfx.ledgerDt || latestQfx.dtEnd || '';
-      checkingLabel = asOf ? 'As of ' + asOf : 'From latest QFX import';
-    }
-  }
-  if (checkingBal === null && S.accounts) {
-    const accBal = S.accounts.filter(a => a.type === 'checking').reduce((s,a) => s + (parseFloat(a.balance)||0), 0);
-    if (accBal !== 0) { checkingBal = accBal; checkingLabel = 'From account entries'; }
-  }
-  // SimpleFIN synced accounts — use posted balance (excludes pending, matches online)
-  if (checkingBal === null && S.accounts) {
-    const sfAll = S.accounts.filter(a => a.source === 'simplefin');
-    // Prefer accounts with "check" in the name; fall back to all deposit-style accounts
+  let checkingBal = null, checkingLabel = 'Sync bank or import QFX to populate';
+
+  // 1. SimpleFIN live bank sync — always most current, use first
+  if (S.accounts) {
+    const sfAll   = S.accounts.filter(a => a.source === 'simplefin');
     const sfCheck = sfAll.filter(a => a.name && a.name.toLowerCase().includes('check'));
-    const sfUse   = sfCheck.length ? sfCheck : sfAll.filter(a => (parseFloat(a.balance)||0) > 0);
+    const sfUse   = sfCheck.length ? sfCheck : sfAll.filter(a => (parseFloat(a.balance) || 0) > 0);
     if (sfUse.length) {
       checkingBal = sfUse.reduce((s, a) => s + (parseFloat(a.balance) || 0), 0);
       const latestDate = sfUse.map(a => a.balanceDate).filter(Boolean).sort().pop();
       checkingLabel = latestDate
-        ? 'Posted balance · ' + new Date(latestDate).toLocaleDateString('en-US', {month:'short', day:'numeric'})
+        ? 'Posted balance · synced ' + new Date(latestDate).toLocaleDateString('en-US', {month:'short', day:'numeric'})
         : 'Posted balance (bank sync)';
     }
+  }
+
+  // 2. QFX ledger balance — fallback for users without SimpleFIN
+  if (checkingBal === null && S.qfxMeta && S.qfxMeta.length) {
+    const latestQfx = [...S.qfxMeta].sort((a,b) => a.importedAt.localeCompare(b.importedAt)).pop();
+    if (latestQfx.ledgerBal !== null && latestQfx.ledgerBal !== undefined) {
+      checkingBal   = latestQfx.ledgerBal;
+      const asOf    = latestQfx.ledgerDt || latestQfx.dtEnd || '';
+      checkingLabel = asOf ? 'As of ' + asOf + ' (QFX import)' : 'From latest QFX import';
+    }
+  }
+
+  // 3. Manually-entered checking accounts — last resort
+  if (checkingBal === null && S.accounts) {
+    const accBal = S.accounts.filter(a => a.type === 'checking').reduce((s,a) => s + (parseFloat(a.balance)||0), 0);
+    if (accBal !== 0) { checkingBal = accBal; checkingLabel = 'From account entries'; }
   }
   if (checkingBal !== null) {
     checkingEl.textContent = fmt(checkingBal);
