@@ -112,13 +112,10 @@ module.exports = async (req, res) => {
     const existing = stateRow?.state || {};
 
     // ── Determine start date ──────────────────────────────────
-    // If the user has cleared their transactions (count = 0), ignore last_synced
-    // and pull the full 90-day window so everything comes back.
-    const hasExistingTxns = (existing.transactions || []).length > 0;
-    const ninetyDaysAgo   = Math.floor((Date.now() - 90 * 24 * 60 * 60 * 1000) / 1000);
-    const startEpoch = (sfRow?.last_synced && hasExistingTxns)
-      ? Math.floor(new Date(sfRow.last_synced).getTime() / 1000)
-      : ninetyDaysAgo;
+    // Always fetch the full 90-day window. ID-based deduplication (knownIds below)
+    // prevents duplicate imports on incremental syncs, and ensures a clean re-fetch
+    // works correctly after the user clears transactions — regardless of last_synced.
+    const startEpoch = Math.floor((Date.now() - 90 * 24 * 60 * 60 * 1000) / 1000);
 
     // ── Fetch from SimpleFIN (credentials via Basic auth) ─────
     const credMatch = accessUrl.match(/^(https?:\/\/)([^:@\s]+):([^@\s]+)@(.+)$/);
@@ -194,8 +191,15 @@ module.exports = async (req, res) => {
 
     // ── Merge into existing state ─────────────────────────────
     // (stateRow / existing already loaded above for start-date logic)
-    const knownIds = new Set((existing.transactions || []).map(t => t.id));
-    const newTxns  = freshTxns.filter(t => !knownIds.has(t.id));
+
+    // fullResync=true when the client has cleared all transactions. In that case
+    // skip ID deduplication so every fetched transaction is treated as new, even
+    // if Supabase's copy still has the old IDs (can happen due to debounce timing).
+    const fullResync = req.body?.fullResync === true;
+    const knownIds   = fullResync
+      ? new Set()
+      : new Set((existing.transactions || []).map(t => t.id));
+    const newTxns = freshTxns.filter(t => !knownIds.has(t.id));
 
     const mergedAccounts = [...(existing.accounts || [])];
     freshAccounts.forEach(fa => {
@@ -204,10 +208,12 @@ module.exports = async (req, res) => {
       else mergedAccounts.push(fa);
     });
 
+    // On a full resync, replace transactions entirely rather than appending
+    const baseTxns = fullResync ? [] : (existing.transactions || []);
     const updatedState = {
       ...existing,
       accounts:     mergedAccounts,
-      transactions: [...(existing.transactions || []), ...newTxns]
+      transactions: [...baseTxns, ...newTxns]
     };
 
     // Use PATCH if row exists, INSERT if new — avoids upsert conflict issues

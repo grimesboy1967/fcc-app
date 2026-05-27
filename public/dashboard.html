@@ -2132,9 +2132,16 @@ async function syncBankAccounts() {
 
   try {
     const { data: { session } } = await getSb().auth.getSession();
+    // fullResync = true when the user has cleared transactions so the server
+    // skips ID deduplication and fetches the full 90-day window fresh.
+    const fullResync = (S.transactions || []).length === 0;
     const res = await fetch('/api/sync', {
       method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + session.access_token }
+      headers: {
+        'Authorization': 'Bearer ' + session.access_token,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ fullResync })
     });
 
     // Read as text first — server might return HTML on crash
@@ -4475,25 +4482,28 @@ function renderTransactions() {
   if(catF) txns=txns.filter(t=>t.category===catF);
   const tbody=document.getElementById('txn-table-body');
   const summary=document.getElementById('txn-summary');
-  const totalIn=txns.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0);
-  const totalOut=txns.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
+  // Infer type from amount when 'type' field is absent (SimpleFIN transactions)
+  const totalIn  = txns.filter(t=>(t.type||'') === 'income'  || (!t.type && t.amount >= 0)).reduce((s,t)=>s+Math.abs(t.amount),0);
+  const totalOut = txns.filter(t=>(t.type||'') === 'expense' || (!t.type && t.amount <  0)).reduce((s,t)=>s+Math.abs(t.amount),0);
   if(summary) summary.textContent=`Showing ${txns.length} transactions | Income: ${fmt(totalIn)} | Expenses: ${fmt(totalOut)} | Net: ${fmt(totalIn-totalOut)}`;
   if(!txns.length){ tbody.innerHTML='<tr><td colspan="7"><div class="empty"><div class="icon">🏦</div><p>No transactions</p></div></td></tr>'; return; }
   const catColors={Housing:'#3b82f6',Food:'#22c55e',Transport:'#f59e0b',Healthcare:'#ef4444',Utilities:'#8b5cf6',Entertainment:'#ec4899',Shopping:'#14b8a6',Income:'#16a34a',Other:'#94a3b8'};
   tbody.innerHTML=txns.map(t=>{
+    // SimpleFIN transactions have no 'type' — infer from amount sign
+    const txnType = t.type || (t.amount >= 0 ? 'income' : 'expense');
     const col=catColors[t.category]||'#94a3b8';
-    const sign=t.type==='income'?'+':'-';
-    const amtColor=t.type==='income'?'#16a34a':'#dc2626';
+    const sign=txnType==='income'?'+':'-';
+    const amtColor=txnType==='income'?'#16a34a':'#dc2626';
     const balCell = t.runningBalance != null
       ? `<td style="font-weight:600;color:${t.runningBalance<0?'#dc2626':'#334155'}">${fmt(t.runningBalance)}</td>`
       : `<td style="color:#cbd5e1;text-align:center">—</td>`;
     return `<tr>
       <td>${t.date}</td>
       <td>${t.description}${t.memo?'<br><small style="color:#94a3b8">'+t.memo+'</small>':''}</td>
-      <td style="color:${amtColor};font-weight:700">${sign}${fmt(t.amount)}</td>
+      <td style="color:${amtColor};font-weight:700">${sign}${fmt(Math.abs(t.amount))}</td>
       ${balCell}
       <td><span class="cat-chip" style="background:${col}22;color:${col}">${t.category}</span></td>
-      <td>${t.type==='income'?'<span class="badge-green">Income</span>':'<span class="badge-red">Expense</span>'}</td>
+      <td>${txnType==='income'?'<span class="badge-green">Income</span>':'<span class="badge-red">Expense</span>'}</td>
       <td><button class="btn btn-danger btn-sm" onclick="deleteTransaction('${t.id}')">🗑</button></td>
     </tr>`;
   }).join('');
