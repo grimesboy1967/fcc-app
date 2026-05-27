@@ -236,6 +236,7 @@
     </div>
     <div style="display:flex;gap:8px">
       <button class="btn btn-primary btn-sm" onclick="runAutoSetup()" id="auto-setup-btn" style="background:linear-gradient(135deg,#4f46e5,#7c3aed)">⚡ Auto-Setup from Transactions</button>
+      <button class="btn btn-outline btn-sm" onclick="reconcileFromBankSync()" title="Recalculate all figures from your synced bank transactions">🏦 Reconcile</button>
       <button class="btn btn-outline btn-sm" onclick="refreshOverview()">🔄 Refresh</button>
     </div>
   </div>
@@ -7114,6 +7115,126 @@ function runAutoSetup() {
 }
 
 // ============================================================
+// RECONCILE FROM BANK SYNC
+// ============================================================
+function reconcileFromBankSync() {
+  const sfTxns = S.transactions.filter(t => t.source === 'simplefin');
+  if (!sfTxns.length) {
+    toast('⚠️ No bank transactions found — sync your bank first'); return;
+  }
+
+  // ── Analyse 90-day window ──────────────────────────────────
+  const deposits  = sfTxns.filter(t => parseFloat(t.amount) > 0);
+  const debits    = sfTxns.filter(t => parseFloat(t.amount) < 0);
+  const totalIn   = deposits.reduce((s,t) => s + parseFloat(t.amount), 0);
+  const totalOut  = debits.reduce((s,t)   => s + Math.abs(parseFloat(t.amount)), 0);
+
+  // Monthly averages (spread over however many unique months appear)
+  const months = new Set(sfTxns.map(t => t.date?.slice(0,7)).filter(Boolean));
+  const numMonths = Math.max(1, months.size);
+  const avgMonthlyIncome   = totalIn  / numMonths;
+  const avgMonthlyExpenses = totalOut / numMonths;
+
+  // Current bank balance from SimpleFIN account
+  const sfAcct   = (S.accounts||[]).find(a => a.source === 'simplefin');
+  const bankBal  = sfAcct ? parseFloat(sfAcct.balance) : null;
+  const acctName = sfAcct?.name || 'Bank Account';
+
+  // ── Clear stale manually-entered values ───────────────────
+  // Reset income setting so overview uses transaction data going forward
+  S.settings.income = 0;
+
+  // ── Save & re-render ──────────────────────────────────────
+  saveState();
+  refreshOverview();
+
+  // ── Show reconciliation summary ───────────────────────────
+  const oldest = sfTxns.map(t=>t.date).filter(Boolean).sort()[0];
+  const newest = sfTxns.map(t=>t.date).filter(Boolean).sort().pop();
+  const periodLabel = oldest && newest
+    ? new Date(oldest+'T12:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}) + ' – ' +
+      new Date(newest+'T12:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})
+    : '90 days';
+
+  // Top 10 deposit sources
+  const depSources = {};
+  deposits.forEach(t => { const k=t.description||'Unknown'; depSources[k]=(depSources[k]||0)+parseFloat(t.amount); });
+  const topDeposits = Object.entries(depSources).sort((a,b)=>b[1]-a[1]).slice(0,5);
+
+  // Top 10 spending categories / payees
+  const spendSources = {};
+  debits.forEach(t => { const k=t.description||'Unknown'; spendSources[k]=(spendSources[k]||0)+Math.abs(parseFloat(t.amount)); });
+  const topSpending = Object.entries(spendSources).sort((a,b)=>b[1]-a[1]).slice(0,10);
+
+  const html = `
+    <div style="font-size:13px;color:#64748b;margin-bottom:16px">
+      Period: <strong>${periodLabel}</strong> · ${sfTxns.length} transactions · ${months.size} month${months.size!==1?'s':''}
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px">
+      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px;text-align:center">
+        <div style="font-size:11px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Total Deposits</div>
+        <div style="font-size:24px;font-weight:800;color:#16a34a">$${totalIn.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+        <div style="font-size:11px;color:#4ade80;margin-top:2px">~$${avgMonthlyIncome.toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0})}/mo avg</div>
+      </div>
+      <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:14px;text-align:center">
+        <div style="font-size:11px;font-weight:700;color:#991b1b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Total Spending</div>
+        <div style="font-size:24px;font-weight:800;color:#dc2626">$${totalOut.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+        <div style="font-size:11px;color:#f87171;margin-top:2px">~$${avgMonthlyExpenses.toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0})}/mo avg</div>
+      </div>
+      <div style="background:${bankBal>=0?'#f0fdf4':'#fef2f2'};border:1px solid ${bankBal>=0?'#bbf7d0':'#fecaca'};border-radius:10px;padding:14px;text-align:center">
+        <div style="font-size:11px;font-weight:700;color:${bankBal>=0?'#166534':'#991b1b'};text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">${acctName}</div>
+        <div style="font-size:24px;font-weight:800;color:${bankBal>=0?'#16a34a':'#dc2626'}">${bankBal!==null?'$'+bankBal.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):'—'}</div>
+        <div style="font-size:11px;color:#64748b;margin-top:2px">Posted balance</div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div>
+        <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px">💰 Top Deposit Sources</div>
+        ${topDeposits.length ? topDeposits.map(([desc,amt])=>`
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #f1f5f9;font-size:12px">
+            <span style="color:#374151;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${desc}">${desc}</span>
+            <span style="font-weight:700;color:#16a34a;white-space:nowrap">+$${amt.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+          </div>`).join('')
+          : '<p style="color:#94a3b8;font-size:12px">No deposits found</p>'}
+      </div>
+      <div>
+        <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px">💸 Top Spending (All Time)</div>
+        ${topSpending.map(([desc,amt])=>`
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #f1f5f9;font-size:12px">
+            <span style="color:#374151;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${desc}">${desc}</span>
+            <span style="font-weight:700;color:#dc2626;white-space:nowrap">-$${amt.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+          </div>`).join('')}
+      </div>
+    </div>
+
+    <div style="margin-top:16px;padding:12px;background:#f8fafc;border-radius:8px;font-size:12px;color:#64748b">
+      ✅ Income setting cleared — overview now reads directly from your transactions. Monthly income shown above is this month's deposits.
+    </div>`;
+
+  // Show in a modal — reuse the existing generic modal if available, else toast
+  const modal = document.getElementById('auto-setup-modal');
+  if (modal) {
+    const title = modal.querySelector('h2, .modal-title, h3');
+    if (title) title.textContent = '🏦 Bank Reconciliation Summary';
+    const body = modal.querySelector('.modal-body, #auto-setup-results');
+    if (body) { body.innerHTML = html; openModal('auto-setup-modal'); return; }
+  }
+  // Fallback — show as an alert-style overlay
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  overlay.innerHTML = `<div style="background:#fff;border-radius:16px;padding:28px;max-width:720px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <h2 style="margin:0;font-size:20px">🏦 Bank Reconciliation Summary</h2>
+      <button onclick="this.closest('[style*=fixed]').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#64748b">✕</button>
+    </div>
+    ${html}
+  </div>`;
+  document.body.appendChild(overlay);
+}
+
+// ============================================================
 // OVERVIEW
 // ============================================================
 let ovChart=null, ovBillerChart=null, ovMonthChart=null;
@@ -7125,21 +7246,33 @@ function refreshOverview() {
   const banner = document.getElementById('auto-setup-banner');
   if (banner) banner.style.display = (hasTxns && !hasBills) ? '' : 'none';
   const cur=S.settings.currency||'$';
-  // Use actual income transactions for current month; fall back to settings value
   const curMonth=new Date().toISOString().slice(0,7);
-  const txnIncome=S.transactions
-    .filter(t=>t.type==='income' && normalizeDate(t.date).startsWith(curMonth))
-    .reduce((s,t)=>s+(parseFloat(t.amount)||0),0);
-  const income = txnIncome > 0 ? txnIncome : (S.settings.income||0);
-  const incomeEl=document.getElementById('ov-income');
-  incomeEl.textContent=(cur)+income.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
-  // Sub-label: show source
-  const incomeSub=incomeEl.parentElement.querySelector('.sub');
-  if(incomeSub) incomeSub.textContent = txnIncome>0 ? 'From bank transactions' : 'From settings (import CSV for actuals)';
-  const billTotal=S.bills.filter(b=>!b.paid).reduce((s,b)=>s+b.amount,0);
-  const txnTotal=S.transactions.filter(t=>t.type==='expense' && normalizeDate(t.date).startsWith(curMonth)).reduce((s,t)=>s+(parseFloat(t.amount)||0),0);
-  const expenses=billTotal+txnTotal;
+
+  // Income — SimpleFIN transactions are positive amounts for deposits.
+  // Legacy manually-entered transactions use type='income'.
+  const txnIncome = S.transactions
+    .filter(t => normalizeDate(t.date).startsWith(curMonth) &&
+      (t.type === 'income' || (!t.type && (parseFloat(t.amount)||0) > 0)))
+    .reduce((s,t) => s + Math.abs(parseFloat(t.amount)||0), 0);
+  const hasSfTxns = S.transactions.some(t => t.source === 'simplefin');
+  const income    = txnIncome > 0 ? txnIncome : (hasSfTxns ? 0 : (S.settings.income||0));
+  const incomeEl  = document.getElementById('ov-income');
+  incomeEl.textContent = (cur)+income.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const incomeSub = incomeEl.parentElement.querySelector('.sub');
+  if(incomeSub) incomeSub.textContent = txnIncome>0 ? 'Deposits this month' : (hasSfTxns ? 'No deposits this month' : 'From settings');
+
+  // Expenses — SimpleFIN transactions are negative amounts for spending.
+  // Do NOT double-count bills already in S.bills when we have real transaction data.
+  const txnExpenses = S.transactions
+    .filter(t => normalizeDate(t.date).startsWith(curMonth) &&
+      (t.type === 'expense' || (!t.type && (parseFloat(t.amount)||0) < 0)))
+    .reduce((s,t) => s + Math.abs(parseFloat(t.amount)||0), 0);
+  // Only add manual bill total when there are no transaction expenses (no SimpleFIN data)
+  const billTotal = txnExpenses > 0 ? 0 : S.bills.filter(b=>!b.paid).reduce((s,b)=>s+b.amount,0);
+  const expenses  = txnExpenses + billTotal;
   document.getElementById('ov-expenses').textContent=fmt(expenses);
+  const expSub = document.getElementById('ov-expense-card')?.querySelector('.sub');
+  if(expSub) expSub.textContent = txnExpenses>0 ? 'From transactions this month' : 'From bills';
   const cf=income-expenses;
   const cfEl=document.getElementById('ov-cashflow');
   const cfCard=document.getElementById('ov-cashflow-card');
