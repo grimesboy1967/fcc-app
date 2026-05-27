@@ -2075,7 +2075,29 @@ async function loadStateCloud() {
       .maybeSingle();
     if (data?.state && Object.keys(data.state).length > 0) {
       S = Object.assign(defaultState(), data.state);
-      // Also refresh localStorage cache
+
+      // ── One-time cleanup: remove stale manually-entered checking/savings accounts
+      // that were entered before SimpleFIN was connected. If SimpleFIN accounts exist,
+      // the manually-entered ones are stale and will show the wrong balance.
+      const sfExists = (S.accounts || []).some(a => a.source === 'simplefin');
+      if (sfExists) {
+        const before = (S.accounts || []).length;
+        S.accounts = (S.accounts || []).filter(a =>
+          a.source === 'simplefin' || !['checking', 'savings'].includes(a.type)
+        );
+        if (S.accounts.length !== before) {
+          console.log(`[cloud] Purged ${before - S.accounts.length} stale manually-entered account(s)`);
+          // Write cleaned state back — bypasses debounce
+          try {
+            await getSb().from('user_state').upsert(
+              { user_id: _user.id, state: S, updated_at: new Date().toISOString() },
+              { onConflict: 'user_id' }
+            );
+          } catch(e) { console.warn('[cloud] cleanup write failed:', e); }
+        }
+      }
+
+      // Refresh localStorage cache
       try { localStorage.setItem(STORAGE_KEY, JSON.stringify(S)); } catch(e){}
       return true;
     }
@@ -2102,6 +2124,12 @@ async function syncBankAccounts() {
   if (!_user) { toast('⚠️ Not signed in'); return; }
   const btn = document.getElementById('cloud-sync-btn');
   if (btn) { btn.textContent = '⏳ Syncing…'; btn.disabled = true; }
+
+  // Cancel any pending debounced save so it can't overwrite the authoritative
+  // state that the server is about to write to Supabase.
+  clearTimeout(_saveCloudTimer);
+  _saveCloudTimer = null;
+
   try {
     const { data: { session } } = await getSb().auth.getSession();
     const res = await fetch('/api/sync', {
@@ -2114,15 +2142,44 @@ async function syncBankAccounts() {
     let json;
     try { json = JSON.parse(raw); }
     catch(e) {
-      // Server returned non-JSON (HTML error page) — show the first 200 chars
       const preview = raw.replace(/<[^>]+>/g, '').trim().slice(0, 200);
       throw new Error('Server error: ' + (preview || 'unknown — check Vercel function logs'));
     }
 
     if (!res.ok) throw new Error(json.error || json.detail || 'Sync failed');
 
-    // Reload state from cloud to get the new transactions
+    // Load the authoritative state the server just wrote
     await loadStateCloud();
+
+    // ── Purge stale manually-entered accounts that are now superseded by SimpleFIN ──
+    // If SimpleFIN accounts exist, remove any manually-entered checking/savings accounts
+    // (those have no source field). They were entered before SimpleFIN was connected and
+    // their balances are stale and wrong.
+    const hasSfAccts = (S.accounts || []).some(a => a.source === 'simplefin');
+    if (hasSfAccts) {
+      const before = (S.accounts || []).length;
+      S.accounts = (S.accounts || []).filter(a =>
+        a.source === 'simplefin' || !['checking', 'savings'].includes(a.type)
+      );
+      const removed = before - S.accounts.length;
+      if (removed > 0) {
+        console.log(`[sync] Removed ${removed} stale manually-entered account(s) superseded by SimpleFIN`);
+        // Write the cleaned state immediately — bypasses debounce
+        try {
+          await getSb().from('user_state').upsert(
+            { user_id: _user.id, state: S, updated_at: new Date().toISOString() },
+            { onConflict: 'user_id' }
+          );
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(S));
+        } catch(e) { console.warn('[sync] cleanup write failed:', e); }
+      }
+    }
+
+    // Cancel any debounced save that loadStateCloud or cleanup may have queued —
+    // Supabase already has the authoritative state; no write needed.
+    clearTimeout(_saveCloudTimer);
+    _saveCloudTimer = null;
+
     renderAll();
     toast(`🏦 Sync complete — ${json.newTransactions} new transaction${json.newTransactions !== 1 ? 's' : ''}`);
   } catch(e) {
@@ -5254,8 +5311,15 @@ function renderAccounts() {
   }
 
   // Summary stats
-  const checking = S.accounts.filter(a => a.type === 'checking').reduce((s, a) => s + (parseFloat(a.balance) || 0), 0);
-  const savings   = S.accounts.filter(a => a.type === 'savings').reduce((s, a) => s + (parseFloat(a.balance) || 0), 0);
+  // For asset totals, use SimpleFIN accounts when available; otherwise manual entries.
+  // Never double-count both for the same type.
+  const hasSf = S.accounts.some(a => a.source === 'simplefin');
+  const checking = S.accounts
+    .filter(a => a.type === 'checking' && (hasSf ? a.source === 'simplefin' : a.source !== 'simplefin'))
+    .reduce((s, a) => s + (parseFloat(a.balance) || 0), 0);
+  const savings = S.accounts
+    .filter(a => a.type === 'savings'  && (hasSf ? a.source === 'simplefin' : a.source !== 'simplefin'))
+    .reduce((s, a) => s + (parseFloat(a.balance) || 0), 0);
   const ccBal     = S.accounts.filter(a => a.type === 'credit_card').reduce((s, a) => s + (parseFloat(a.ccBalance) || 0), 0);
   const loanBal   = S.accounts.filter(a => ['auto_loan','student_loan','bnpl'].includes(a.type)).reduce((s, a) => s + (parseFloat(a.lnBalance) || 0), 0);
   const ccLimit   = S.accounts.filter(a => a.type === 'credit_card').reduce((s, a) => s + (parseFloat(a.ccLimit) || 0), 0);
@@ -7128,9 +7192,11 @@ function refreshOverview() {
     }
   }
 
-  // 3. Manually-entered checking accounts — last resort
+  // 3. Manually-entered checking accounts — last resort (exclude SimpleFIN, already handled in Tier 1)
   if (checkingBal === null && S.accounts) {
-    const accBal = S.accounts.filter(a => a.type === 'checking').reduce((s,a) => s + (parseFloat(a.balance)||0), 0);
+    const accBal = S.accounts
+      .filter(a => a.type === 'checking' && a.source !== 'simplefin')
+      .reduce((s,a) => s + (parseFloat(a.balance)||0), 0);
     if (accBal !== 0) {
       checkingBal   = accBal;
       checkingLabel = 'From account entries';

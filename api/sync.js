@@ -146,12 +146,23 @@ module.exports = async (req, res) => {
     const freshTxns     = [];
 
     (sfData.accounts || []).forEach(acct => {
+      // Infer account type from name (SimpleFIN doesn't expose a type field)
+      const n = (acct.name || '').toLowerCase();
+      const sfType =
+        n.includes('sav')                                          ? 'savings'     :
+        n.includes('credit') || n.includes('card')                ? 'credit_card' :
+        n.includes('invest') || n.includes('brokerage') ||
+          n.includes('ira')  || n.includes('401k')                ? 'investment'  :
+        n.includes('loan')   || n.includes('mortgage')            ? 'loan'        :
+                                                                     'checking';   // default
+
       freshAccounts.push({
         id:               acct.id,
         name:             acct.name,
         org:              acct.org?.name || acct.org?.domain || 'Unknown Bank',
+        type:             sfType,
         balance:          parseFloat(acct.balance) || 0,
-        availableBalance: parseFloat(acct['available-balance']) || 0,
+        availableBalance: parseFloat(acct['available-balance']) ?? parseFloat(acct.balance) ?? 0,
         balanceDate:      new Date((acct['balance-date'] || 0) * 1000).toISOString(),
         currency:         acct.currency || 'USD',
         source:           'simplefin'
