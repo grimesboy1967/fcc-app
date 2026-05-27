@@ -107,10 +107,18 @@ module.exports = async (req, res) => {
       });
     }
 
+    // ── Load current state early (needed to decide start date) ──
+    const stateRow = await sbSelect('user_state', `user_id=eq.${userId}`);
+    const existing = stateRow?.state || {};
+
     // ── Determine start date ──────────────────────────────────
-    const startEpoch = sfRow?.last_synced
+    // If the user has cleared their transactions (count = 0), ignore last_synced
+    // and pull the full 90-day window so everything comes back.
+    const hasExistingTxns = (existing.transactions || []).length > 0;
+    const ninetyDaysAgo   = Math.floor((Date.now() - 90 * 24 * 60 * 60 * 1000) / 1000);
+    const startEpoch = (sfRow?.last_synced && hasExistingTxns)
       ? Math.floor(new Date(sfRow.last_synced).getTime() / 1000)
-      : Math.floor((Date.now() - 90 * 24 * 60 * 60 * 1000) / 1000);
+      : ninetyDaysAgo;
 
     // ── Fetch from SimpleFIN (credentials via Basic auth) ─────
     const credMatch = accessUrl.match(/^(https?:\/\/)([^:@\s]+):([^@\s]+)@(.+)$/);
@@ -185,8 +193,7 @@ module.exports = async (req, res) => {
     });
 
     // ── Merge into existing state ─────────────────────────────
-    const stateRow = await sbSelect('user_state', `user_id=eq.${userId}`);
-    const existing = stateRow?.state || {};
+    // (stateRow / existing already loaded above for start-date logic)
     const knownIds = new Set((existing.transactions || []).map(t => t.id));
     const newTxns  = freshTxns.filter(t => !knownIds.has(t.id));
 
