@@ -7248,39 +7248,96 @@ function refreshOverview() {
   const cur=S.settings.currency||'$';
   const curMonth=new Date().toISOString().slice(0,7);
 
-  // Income — SimpleFIN transactions are positive amounts for deposits.
-  // Legacy manually-entered transactions use type='income'.
-  const txnIncome = S.transactions
-    .filter(t => normalizeDate(t.date).startsWith(curMonth) &&
-      (t.type === 'income' || (!t.type && (parseFloat(t.amount)||0) > 0)))
-    .reduce((s,t) => s + Math.abs(parseFloat(t.amount)||0), 0);
-  const hasSfTxns = S.transactions.some(t => t.source === 'simplefin');
-  const income    = txnIncome > 0 ? txnIncome : (hasSfTxns ? 0 : (S.settings.income||0));
-  const incomeEl  = document.getElementById('ov-income');
+  // ── Helper: classify a transaction as income or expense ─────
+  // SimpleFIN transactions have no 'type' — use amount sign.
+  // Legacy manual transactions use type='income'/'expense'.
+  const isDeposit = t => t.type === 'income'  || (!t.type && (parseFloat(t.amount)||0) > 0);
+  const isDebit   = t => t.type === 'expense' || (!t.type && (parseFloat(t.amount)||0) < 0);
+
+  const hasSfTxns  = S.transactions.some(t => t.source === 'simplefin');
+  const allDeposits = S.transactions.filter(isDeposit);
+  const allDebits   = S.transactions.filter(isDebit);
+
+  // ── Income ────────────────────────────────────────────────
+  // 1. Try current calendar month first
+  const curMonthDeposits = allDeposits.filter(t => normalizeDate(t.date).startsWith(curMonth));
+  let income = curMonthDeposits.reduce((s,t) => s + Math.abs(parseFloat(t.amount)||0), 0);
+  let incomeLabel = 'Deposits this month';
+
+  // 2. If current month is empty (e.g. early in month or data gap), use the
+  //    most recent month that has deposit data
+  if (income === 0 && allDeposits.length > 0) {
+    const months = [...new Set(allDeposits.map(t => normalizeDate(t.date).slice(0,7)).filter(Boolean))].sort().reverse();
+    const latestMonth = months[0];
+    if (latestMonth) {
+      income = allDeposits
+        .filter(t => normalizeDate(t.date).startsWith(latestMonth))
+        .reduce((s,t) => s + Math.abs(parseFloat(t.amount)||0), 0);
+      incomeLabel = latestMonth === curMonth ? 'Deposits this month'
+        : 'Deposits in ' + new Date(latestMonth+'-15').toLocaleDateString('en-US',{month:'short',year:'numeric'});
+    }
+  }
+
+  // 3. No transaction data at all — fall back to manual setting
+  if (income === 0 && !hasSfTxns) { income = S.settings.income||0; incomeLabel = 'From settings'; }
+
+  const incomeEl = document.getElementById('ov-income');
   incomeEl.textContent = (cur)+income.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
   const incomeSub = incomeEl.parentElement.querySelector('.sub');
-  if(incomeSub) incomeSub.textContent = txnIncome>0 ? 'Deposits this month' : (hasSfTxns ? 'No deposits this month' : 'From settings');
+  if(incomeSub) incomeSub.textContent = incomeLabel;
 
-  // Expenses — SimpleFIN transactions are negative amounts for spending.
-  // Do NOT double-count bills already in S.bills when we have real transaction data.
-  const txnExpenses = S.transactions
-    .filter(t => normalizeDate(t.date).startsWith(curMonth) &&
-      (t.type === 'expense' || (!t.type && (parseFloat(t.amount)||0) < 0)))
-    .reduce((s,t) => s + Math.abs(parseFloat(t.amount)||0), 0);
-  // Only add manual bill total when there are no transaction expenses (no SimpleFIN data)
-  const billTotal = txnExpenses > 0 ? 0 : S.bills.filter(b=>!b.paid).reduce((s,b)=>s+b.amount,0);
-  const expenses  = txnExpenses + billTotal;
-  document.getElementById('ov-expenses').textContent=fmt(expenses);
+  // ── Expenses ──────────────────────────────────────────────
+  const curMonthDebits = allDebits.filter(t => normalizeDate(t.date).startsWith(curMonth));
+  let txnExpenses = curMonthDebits.reduce((s,t) => s + Math.abs(parseFloat(t.amount)||0), 0);
+  let expLabel = 'Spending this month';
+
+  if (txnExpenses === 0 && allDebits.length > 0) {
+    const months = [...new Set(allDebits.map(t => normalizeDate(t.date).slice(0,7)).filter(Boolean))].sort().reverse();
+    const latestMonth = months[0];
+    if (latestMonth) {
+      txnExpenses = allDebits
+        .filter(t => normalizeDate(t.date).startsWith(latestMonth))
+        .reduce((s,t) => s + Math.abs(parseFloat(t.amount)||0), 0);
+      expLabel = latestMonth === curMonth ? 'Spending this month'
+        : 'Spending in ' + new Date(latestMonth+'-15').toLocaleDateString('en-US',{month:'short',year:'numeric'});
+    }
+  }
+
+  // Only fold in manual bills when there is no real transaction data
+  const billTotal = (txnExpenses === 0 && !hasSfTxns)
+    ? S.bills.filter(b=>!b.paid).reduce((s,b)=>s+b.amount,0) : 0;
+  const expenses = txnExpenses + billTotal;
+  if (txnExpenses === 0 && !hasSfTxns) expLabel = 'From bills';
+
+  document.getElementById('ov-expenses').textContent = fmt(expenses);
   const expSub = document.getElementById('ov-expense-card')?.querySelector('.sub');
-  if(expSub) expSub.textContent = txnExpenses>0 ? 'From transactions this month' : 'From bills';
+  if(expSub) expSub.textContent = expLabel;
+
   const cf=income-expenses;
   const cfEl=document.getElementById('ov-cashflow');
   const cfCard=document.getElementById('ov-cashflow-card');
   cfEl.textContent=fmt(cf);
   cfEl.style.color=cf>=0?'#16a34a':'#dc2626';
   cfCard.className='stat-card '+(cf>=0?'green':'red');
-  const totalDebt=S.debts.reduce((s,d)=>s+d.balance,0);
-  document.getElementById('ov-debt').textContent=fmt(totalDebt);
+
+  // ── Total Debt ────────────────────────────────────────────
+  // Use manually-entered debts when available; supplement with SimpleFIN
+  // credit/loan account balances when S.debts is empty.
+  let totalDebt = S.debts.reduce((s,d) => s + (parseFloat(d.balance)||0), 0);
+  let debtLabel = 'All accounts';
+  if (totalDebt === 0) {
+    // Pull from SimpleFIN accounts that are credit cards or loans
+    const sfDebtAccts = (S.accounts||[]).filter(a =>
+      a.source === 'simplefin' && ['credit_card','loan','mortgage'].includes(a.type)
+    );
+    if (sfDebtAccts.length) {
+      totalDebt = sfDebtAccts.reduce((s,a) => s + Math.abs(parseFloat(a.balance)||0), 0);
+      debtLabel = 'From synced accounts';
+    }
+  }
+  document.getElementById('ov-debt').textContent = fmt(totalDebt);
+  const debtSub = document.getElementById('ov-debt')?.parentElement?.querySelector('.sub');
+  if (debtSub) debtSub.textContent = debtLabel;
   // Checking balance — prefer QFX ledger balance (most accurate), fall back to S.accounts
   const checkingEl  = document.getElementById('ov-checking');
   const checkingSub = document.getElementById('ov-checking-sub');
