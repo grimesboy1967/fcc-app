@@ -254,7 +254,7 @@
     <div class="stat-card blue"><div class="label">Monthly Income</div><div class="value" id="ov-income">$0</div><div class="sub">This month</div></div>
     <div class="stat-card" id="ov-expense-card"><div class="label">Monthly Expenses</div><div class="value" id="ov-expenses">$0</div><div class="sub">Bills + transactions</div></div>
     <div class="stat-card" id="ov-cashflow-card"><div class="label">Cash Flow</div><div class="value" id="ov-cashflow">$0</div><div class="sub">Income minus expenses</div></div>
-    <div class="stat-card green" id="ov-checking-card"><div class="label">Checking Balance</div><div class="value" id="ov-checking">—</div><div class="sub" id="ov-checking-sub">Import QFX to populate</div></div>
+    <div class="stat-card green" id="ov-checking-card"><div class="label" id="ov-checking-label">Checking Balance</div><div class="value" id="ov-checking">—</div><div id="ov-checking-breakdown" style="margin:4px 0 2px"></div><div class="sub" id="ov-checking-sub">Sync bank or import QFX</div></div>
     <div class="stat-card amber"><div class="label">Total Debt</div><div class="value" id="ov-debt">$0</div><div class="sub">All accounts</div></div>
   </div>
   <div class="grid-2">
@@ -7078,19 +7078,42 @@ function refreshOverview() {
   const checkingEl  = document.getElementById('ov-checking');
   const checkingSub = document.getElementById('ov-checking-sub');
   const checkingCard = document.getElementById('ov-checking-card');
-  let checkingBal = null, checkingLabel = 'Sync bank or import QFX to populate';
+  let checkingBal = null, checkingLabel = 'Sync bank or import QFX';
+  const breakdownEl = document.getElementById('ov-checking-breakdown');
+  const cardLabelEl = document.getElementById('ov-checking-label');
+  if (breakdownEl) breakdownEl.innerHTML = '';
 
-  // 1. SimpleFIN live bank sync — always most current, use first
+  // 1. SimpleFIN live bank sync — always most current, show each account individually
   if (S.accounts) {
-    const sfAll   = S.accounts.filter(a => a.source === 'simplefin');
-    const sfCheck = sfAll.filter(a => a.name && a.name.toLowerCase().includes('check'));
-    const sfUse   = sfCheck.length ? sfCheck : sfAll.filter(a => (parseFloat(a.balance) || 0) > 0);
-    if (sfUse.length) {
-      checkingBal = sfUse.reduce((s, a) => s + (parseFloat(a.balance) || 0), 0);
-      const latestDate = sfUse.map(a => a.balanceDate).filter(Boolean).sort().pop();
-      checkingLabel = latestDate
-        ? 'Posted balance · synced ' + new Date(latestDate).toLocaleDateString('en-US', {month:'short', day:'numeric'})
-        : 'Posted balance (bank sync)';
+    const sfAll = S.accounts.filter(a => a.source === 'simplefin');
+    if (sfAll.length) {
+      const latestDate = sfAll.map(a => a.balanceDate).filter(Boolean).sort().pop();
+      const syncedStr  = latestDate
+        ? 'Synced ' + new Date(latestDate).toLocaleDateString('en-US', {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'})
+        : 'Bank sync';
+
+      if (sfAll.length === 1) {
+        // Single account — show its balance directly
+        checkingBal   = parseFloat(sfAll[0].balance) || 0;
+        checkingLabel = syncedStr + ' · posted balance';
+        if (cardLabelEl) cardLabelEl.textContent = sfAll[0].name || 'Bank Balance';
+      } else {
+        // Multiple accounts — list each individually, total at top
+        checkingBal = sfAll.reduce((s, a) => s + (parseFloat(a.balance) || 0), 0);
+        checkingLabel = syncedStr + ' · posted balance';
+        if (cardLabelEl) cardLabelEl.textContent = 'Bank Accounts (' + sfAll.length + ')';
+        if (breakdownEl) {
+          breakdownEl.innerHTML = sfAll.map(a => {
+            const bal = parseFloat(a.balance) || 0;
+            const sign = bal >= 0 ? '' : '−';
+            const color = bal >= 0 ? '#16a34a' : '#dc2626';
+            return `<div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;margin-top:2px">
+              <span style="color:#94a3b8;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${a.name||''}">${a.name || a.org || 'Account'}</span>
+              <span style="font-weight:700;color:${color}">${sign}$${Math.abs(bal).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+            </div>`;
+          }).join('');
+        }
+      }
     }
   }
 
@@ -7100,23 +7123,24 @@ function refreshOverview() {
     if (latestQfx.ledgerBal !== null && latestQfx.ledgerBal !== undefined) {
       checkingBal   = latestQfx.ledgerBal;
       const asOf    = latestQfx.ledgerDt || latestQfx.dtEnd || '';
-      checkingLabel = asOf ? 'As of ' + asOf + ' (QFX import)' : 'From latest QFX import';
+      checkingLabel = asOf ? 'As of ' + asOf + ' (QFX)' : 'From latest QFX import';
+      if (cardLabelEl) cardLabelEl.textContent = 'Checking Balance';
     }
   }
 
   // 3. Manually-entered checking accounts — last resort
   if (checkingBal === null && S.accounts) {
     const accBal = S.accounts.filter(a => a.type === 'checking').reduce((s,a) => s + (parseFloat(a.balance)||0), 0);
-    if (accBal !== 0) { checkingBal = accBal; checkingLabel = 'From account entries'; }
+    if (accBal !== 0) {
+      checkingBal   = accBal;
+      checkingLabel = 'From account entries';
+      if (cardLabelEl) cardLabelEl.textContent = 'Checking Balance';
+    }
   }
+
   if (checkingBal !== null) {
     checkingEl.textContent = fmt(checkingBal);
     checkingCard.className = 'stat-card ' + (checkingBal >= 0 ? 'green' : 'red');
-    // Update card label: if from SimpleFIN, say "Bank Balance" to cover all account types
-    const cardLabel = checkingCard.querySelector('.label');
-    if (cardLabel) {
-      cardLabel.textContent = checkingLabel.toLowerCase().includes('posted') ? 'Bank Balance' : 'Checking Balance';
-    }
   } else {
     checkingEl.textContent = '—';
     checkingCard.className = 'stat-card';
