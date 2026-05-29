@@ -187,29 +187,33 @@
   <div class="section-label">Dashboard</div>
   <a class="active" data-section="overview"><span class="icon">🏠</span>Overview</a>
   <div class="section-label">Money In/Out</div>
-  <a data-section="bills"><span class="icon">📋</span>Bills &amp; Payments</a>
+  <a data-section="bills" id="nav-bills"><span class="icon">📋</span>Bills &amp; Payments <span id="nav-bills-badge" style="display:none;background:#dc2626;color:#fff;border-radius:10px;font-size:10px;font-weight:700;padding:1px 6px;margin-left:auto"></span></a>
   <a data-section="calendar"><span class="icon">📅</span>Bill Calendar</a>
   <a data-section="paycheck"><span class="icon">💵</span>Paycheck Planner</a>
-  <a data-section="usbank"><span class="icon">🏛</span>US Bank</a>
-  <a data-section="bank"><span class="icon">📄</span>Bank Statements</a>
+  <a data-section="bank"><span class="icon">💳</span>Transactions</a>
   <a data-section="pending"><span class="icon">⏳</span>Pending Items</a>
   <div class="section-label">Planning</div>
   <a data-section="accounts"><span class="icon">🗂</span>Accounts</a>
   <a data-section="billplan"><span class="icon">🧮</span>Payment Planner</a>
   <a data-section="debt"><span class="icon">💳</span>Debt Payoff</a>
-  <a data-section="debtsnapshot"><span class="icon">📋</span>Debt Snapshot</a>
   <a data-section="networth"><span class="icon">📈</span>Net Worth</a>
-  <a data-section="envelopes"><span class="icon">🪙</span>Budget Envelopes</a>
+  <a data-section="envelopes" id="nav-envelopes"><span class="icon">🪙</span>Budget Envelopes <span id="nav-env-badge" style="display:none;background:#f59e0b;color:#fff;border-radius:10px;font-size:10px;font-weight:700;padding:1px 6px;margin-left:auto"></span></a>
   <a data-section="goals"><span class="icon">🎯</span>Financial Goals</a>
   <div class="section-label">Insights</div>
-  <a data-section="trends"><span class="icon">📊</span>Trends &amp; Analysis</a>
+  <a data-section="reports"><span class="icon">📊</span>Reports &amp; Trends</a>
   <a data-section="recommendations"><span class="icon">🚨</span>Recommendations</a>
-  <a data-section="news"><span class="icon">📰</span>Financial News</a>
-  <a data-section="reports"><span class="icon">🗒️</span>Reports</a>
   <div class="section-label">Setup</div>
   <a data-section="settings"><span class="icon">⚙️</span>Settings</a>
+  <!-- Live balance strip -->
+  <div id="sidebar-balance-strip" style="padding:10px 12px;border-top:1px solid #1e293b;background:#0a1628">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+      <span style="font-size:10px;color:#475569;text-transform:uppercase;letter-spacing:.06em;font-weight:700">Checking</span>
+      <span id="sb-balance" style="font-size:14px;font-weight:800;color:#22c55e">—</span>
+    </div>
+    <div id="sb-sync-time" style="font-size:10px;color:#475569;text-align:right">Not synced yet</div>
+  </div>
   <!-- Cloud sync & auth controls -->
-  <div style="margin-top:auto;padding:14px 12px;border-top:1px solid #1e293b">
+  <div style="padding:10px 12px;border-top:1px solid #1e293b">
     <button id="cloud-sync-btn"
       onclick="syncBankAccounts()"
       title="Pull latest transactions from your bank via SimpleFIN"
@@ -251,12 +255,16 @@
       <button class="btn btn-primary btn-sm" onclick="navigate('transactions')" style="background:#4f46e5;flex-shrink:0">Import CSV →</button>
     </div>
   </div>
-  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px;margin-bottom:20px">
-    <div class="stat-card blue"><div class="label">Monthly Income</div><div class="value" id="ov-income">$0</div><div class="sub">This month</div></div>
+  <!-- Health Score Banner -->
+  <div id="ov-health-banner" style="display:none;border-radius:12px;padding:14px 20px;margin-bottom:16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap"></div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:16px;margin-bottom:20px">
+    <div class="stat-card blue"><div class="label">Monthly Income</div><div class="value" id="ov-income">$0</div><div class="sub" id="ov-income-sub">This month</div></div>
     <div class="stat-card" id="ov-expense-card"><div class="label">Monthly Expenses</div><div class="value" id="ov-expenses">$0</div><div class="sub">Bills + transactions</div></div>
     <div class="stat-card" id="ov-cashflow-card"><div class="label">Cash Flow</div><div class="value" id="ov-cashflow">$0</div><div class="sub">Income minus expenses</div></div>
     <div class="stat-card green" id="ov-checking-card"><div class="label" id="ov-checking-label">Checking Balance</div><div class="value" id="ov-checking">—</div><div id="ov-checking-breakdown" style="margin:4px 0 2px"></div><div class="sub" id="ov-checking-sub">Sync bank or import QFX</div></div>
     <div class="stat-card amber"><div class="label">Total Debt</div><div class="value" id="ov-debt">$0</div><div class="sub">All accounts</div></div>
+    <div class="stat-card" id="ov-savings-card"><div class="label">Savings Rate</div><div class="value" id="ov-savings-rate">—</div><div class="sub" id="ov-savings-sub">of income saved</div></div>
+    <div class="stat-card" id="ov-networth-card" onclick="navigate('networth')" style="cursor:pointer" title="Click to open Net Worth"><div class="label">Net Worth</div><div class="value" id="ov-networth">—</div><div class="sub">Assets minus debts</div></div>
   </div>
   <div class="grid-2">
     <div>
@@ -326,140 +334,12 @@
   </div>
 </div>
 
-<!-- ===== US BANK ===== -->
-<div id="sec-usbank" class="section">
+<!-- US Bank section removed — access via quick-launch card in Transactions -->
 
-  <!-- Hero launcher -->
-  <div class="usbank-hero">
-    <div style="position:relative;z-index:1">
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
-        <div style="background:#fff;border-radius:10px;width:44px;height:44px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">🏛</div>
-        <div>
-          <div style="font-size:11px;opacity:.6;letter-spacing:.08em;text-transform:uppercase;font-weight:600">Connected Bank</div>
-          <h2 style="margin-bottom:0">U.S. Bank</h2>
-        </div>
-      </div>
-      <p>Open US Bank alongside this dashboard in a side-by-side split view. Log in, check balances, make transfers — then come back here to record what you did.</p>
-      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
-        <button class="usbank-launch-btn" onclick="launchUSBankSideBySide()">
-          <span style="font-size:20px">⇔</span>
-          <span>
-            Open Side by Side
-            <span class="btn-sub">Splits your screen automatically</span>
-          </span>
-        </button>
-        <button class="usbank-launch-btn" style="background:rgba(255,255,255,.15);color:#fff;box-shadow:none;border:1px solid rgba(255,255,255,.3)" onclick="launchUSBankNewTab()">
-          <span style="font-size:18px">↗</span>
-          <span>
-            New Tab
-            <span class="btn-sub">Full screen</span>
-          </span>
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Layout picker -->
-  <div class="card">
-    <div class="card-title">📐 Split Layout</div>
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">
-      <div class="layout-option active-layout" id="layout-50" onclick="setLayout(50)">
-        <div class="layout-diagram">▐█▌</div>
-        <h4>50 / 50</h4>
-        <p>Equal split — best for most screens</p>
-      </div>
-      <div class="layout-option" id="layout-60" onclick="setLayout(60)">
-        <div class="layout-diagram">▐██▌</div>
-        <h4>60 / 40</h4>
-        <p>More space for your bank</p>
-      </div>
-      <div class="layout-option" id="layout-40" onclick="setLayout(40)">
-        <div class="layout-diagram">▐▌█</div>
-        <h4>40 / 60</h4>
-        <p>More space for this dashboard</p>
-      </div>
-    </div>
-    <div class="usbank-tip-row">
-      ⚡ <strong>Power tip:</strong> After clicking "Open Side by Side," your browser may ask permission to move/resize windows. Allow it for the best experience.
-    </div>
-    <div style="font-size:12px;color:#94a3b8">
-      If auto-split doesn't work in your browser, drag the US Bank tab to the right half of your screen manually (Windows: <strong>Win + →</strong>, Mac: drag to edge).
-    </div>
-  </div>
-
-  <!-- Quick actions -->
-  <div class="grid-2">
-    <div class="card">
-      <div class="card-title">⚡ Quick Actions at US Bank</div>
-      <div style="display:flex;flex-direction:column;gap:8px">
-        <button class="btn btn-outline" style="justify-content:flex-start;gap:12px" onclick="launchUSBankTo('https://onlinebanking.usbank.com/digital/servicing/accounts')">
-          <span style="font-size:18px">💰</span><span><strong>View Accounts & Balances</strong><br><small style="color:#64748b;font-weight:400">Check all account balances</small></span>
-        </button>
-        <button class="btn btn-outline" style="justify-content:flex-start;gap:12px" onclick="launchUSBankTo('https://onlinebanking.usbank.com/digital/servicing/payments/pay-bills')">
-          <span style="font-size:18px">📋</span><span><strong>Pay Bills</strong><br><small style="color:#64748b;font-weight:400">US Bank bill pay center</small></span>
-        </button>
-        <button class="btn btn-outline" style="justify-content:flex-start;gap:12px" onclick="launchUSBankTo('https://onlinebanking.usbank.com/digital/servicing/transfers')">
-          <span style="font-size:18px">↔️</span><span><strong>Transfer Money</strong><br><small style="color:#64748b;font-weight:400">Move funds between accounts</small></span>
-        </button>
-        <button class="btn btn-outline" style="justify-content:flex-start;gap:12px" onclick="launchUSBankTo('https://onlinebanking.usbank.com/digital/servicing/accounts/transactions')">
-          <span style="font-size:18px">📜</span><span><strong>View Transactions</strong><br><small style="color:#64748b;font-weight:400">Recent activity & history</small></span>
-        </button>
-        <button class="btn btn-outline" style="justify-content:flex-start;gap:12px" onclick="launchUSBankTo('https://onlinebanking.usbank.com/digital/servicing/statements')">
-          <span style="font-size:18px">📥</span><span><strong>Download Statements (CSV)</strong><br><small style="color:#64748b;font-weight:400">Then import into Bank Statements tab</small></span>
-        </button>
-      </div>
-    </div>
-
-    <div>
-      <div class="card">
-        <div class="card-title">📋 Import Workflow</div>
-        <div style="font-size:13px;color:#374151;line-height:2">
-          <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px">
-            <div style="background:#002244;color:#fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;margin-top:1px">1</div>
-            <div>Open US Bank side-by-side using the button above</div>
-          </div>
-          <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px">
-            <div style="background:#002244;color:#fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;margin-top:1px">2</div>
-            <div>Log in → go to <strong>Statements</strong> → Download CSV</div>
-          </div>
-          <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px">
-            <div style="background:#002244;color:#fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;margin-top:1px">3</div>
-            <div>Come back here → click <strong>Bank Statements</strong> in the sidebar</div>
-          </div>
-          <div style="display:flex;align-items:flex-start;gap:10px">
-            <div style="background:#22c55e;color:#fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;margin-top:1px">✓</div>
-            <div>Click <strong>Import CSV</strong> — done. Bills auto-detected instantly.</div>
-          </div>
-        </div>
-        <button class="btn btn-primary" style="margin-top:16px;width:100%" onclick="navigate('bank')">
-          📄 Go to Bank Statements →
-        </button>
-      </div>
-
-      <div class="card">
-        <div class="card-title">📊 Your US Bank Summary</div>
-        <div id="usbank-summary-stats"></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Session notes -->
-  <div class="card">
-    <div class="card-title">📝 Banking Session Notes</div>
-    <p style="font-size:12px;color:#64748b;margin-bottom:10px">Jot down anything you did at the bank — payments made, transfers, calls with support:</p>
-    <div id="usbank-notes-list" style="margin-bottom:12px"></div>
-    <div style="display:flex;gap:8px">
-      <input type="text" id="usbank-note-input" placeholder="e.g. Paid mortgage $1,842 · Transferred $500 to savings" style="flex:1;padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:13px" onkeydown="if(event.key==='Enter')addUSBankNote()">
-      <button class="btn btn-primary" onclick="addUSBankNote()">+ Add</button>
-    </div>
-  </div>
-
-</div>
-
-<!-- ===== BANK ===== -->
+<!-- ===== BANK / TRANSACTIONS ===== -->
 <div id="sec-bank" class="section">
   <div class="section-header">
-    <div><h2>🏦 Bank Statements</h2><p>Import CSV or Quicken QFX exports from your bank to track transactions</p></div>
+    <div><h2>💳 Transactions</h2><p>Live bank sync via SimpleFIN — or import CSV / QFX manually</p></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn btn-outline btn-sm" onclick="openModal('add-txn-modal')">+ Manual Entry</button>
       <button class="btn btn-outline" onclick="document.getElementById('qfx-file').click()">💼 Import QFX</button>
@@ -468,17 +348,34 @@
   </div>
   <input type="file" id="csv-file" accept=".csv" style="display:none" onchange="handleCSV(this)">
   <input type="file" id="qfx-file" accept=".qfx,.ofx" style="display:none" onchange="handleQFX(this)">
-  <div class="tip">💡 <strong>How to export:</strong> Log in to your bank → Accounts → Download/Export → Choose <strong>CSV</strong> (most banks) or <strong>Quicken / QFX</strong> format → Select date range → Download. QFX imports automatically — no column mapping needed!</div>
-  <!-- Bank quick launch -->
-  <div class="card" style="margin-bottom:20px">
-    <div class="card-title">🚀 Quick Launch Bank</div>
-    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-      <input id="bank-url-input" type="url" placeholder="https://www.yourbank.com" style="flex:1;min-width:200px;padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:13px" value="">
-      <button class="btn btn-primary" onclick="launchBank()">🏦 Open My Bank</button>
-      <button class="btn btn-outline btn-sm" onclick="saveBankUrl()">💾 Save URL</button>
+
+  <!-- US Bank Quick Launch (compact) -->
+  <div class="card" style="margin-bottom:16px;padding:14px 20px">
+    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+      <div style="background:#002244;border-radius:8px;padding:8px 10px;color:#fff;font-size:11px;font-weight:700;letter-spacing:.04em;flex-shrink:0">🏛 US BANK</div>
+      <div style="flex:1;font-size:13px;color:#374151">Open your bank to check balances, pay bills, or download a statement</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;flex-shrink:0">
+        <button class="btn btn-outline btn-sm" onclick="launchUSBankSideBySide()">⇔ Side by Side</button>
+        <button class="btn btn-outline btn-sm" onclick="launchUSBankNewTab()">↗ New Tab</button>
+        <button class="btn btn-outline btn-sm" onclick="launchUSBankTo('https://onlinebanking.usbank.com/digital/servicing/statements')">📥 Download CSV</button>
+      </div>
     </div>
-    <p style="font-size:11px;color:#94a3b8;margin-top:8px">Note: Banks cannot be embedded here for security reasons. This opens your bank in a new browser tab.</p>
   </div>
+
+  <!-- Session notes (kept compact) -->
+  <div class="card" style="margin-bottom:16px;padding:14px 20px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+      <span style="font-size:13px;font-weight:700;color:#0f172a">📝 Banking Notes</span>
+      <span style="font-size:11px;color:#94a3b8">— quick log of what you did at the bank</span>
+    </div>
+    <div id="usbank-notes-list" style="margin-bottom:8px;max-height:80px;overflow-y:auto"></div>
+    <div style="display:flex;gap:8px">
+      <input type="text" id="usbank-note-input" placeholder="e.g. Paid mortgage $1,842 · Transferred $500 to savings" style="flex:1;padding:7px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:12px" onkeydown="if(event.key==='Enter')addUSBankNote()">
+      <button class="btn btn-outline btn-sm" onclick="addUSBankNote()">+ Add</button>
+    </div>
+  </div>
+
+  <div class="tip">💡 <strong>Live sync:</strong> Hit <strong>🏦 Sync Bank</strong> in the sidebar to pull 90 days from SimpleFIN automatically. Or download a CSV/QFX from your bank and import it below.</div>
   <!-- CSV column mapper (hidden until CSV loaded) -->
   <div id="csv-mapper" style="display:none" class="card">
     <div class="card-title">🗂 Map CSV Columns</div>
@@ -973,14 +870,21 @@
 <!-- ===== DEBT ===== -->
 <div id="sec-debt" class="section">
   <div class="section-header">
-    <div><h2>💳 Debt Payoff Planner</h2><p>See exactly how to pay off all debt as fast as possible</p></div>
-    <div style="display:flex;gap:8px;align-items:center">
+    <div><h2>💳 Debt Payoff</h2><p>Payoff planner, snapshot view, and strategy comparison</p></div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <button class="btn btn-outline btn-sm" onclick="copySyncRequest()" title="Generate text to paste to Claude to sync all balances">📋 Copy Sync Request</button>
       <button class="btn btn-outline btn-sm" onclick="syncAllDebts()" title="Sync all debts that have credentials stored" id="sync-all-btn">🔄 Sync All</button>
       <button class="btn btn-outline btn-sm" onclick="manualSyncBillsToDebt()" title="Pull in bills that have statement data on file">📂 Sync from Bills</button>
       <button class="btn btn-primary" onclick="openNewDebtModal()">+ Add Debt</button>
     </div>
   </div>
+  <!-- View toggle -->
+  <div class="view-toggle" style="margin-bottom:16px">
+    <button id="debt-tab-planner" class="active" onclick="showDebtTab('planner')">📊 Payoff Planner</button>
+    <button id="debt-tab-snapshot" onclick="showDebtTab('snapshot')">📋 Snapshot View</button>
+  </div>
+  <!-- Planner view -->
+  <div id="debt-view-planner">
   <div class="tip">💡 <strong>How it works:</strong> Add all your debts below, then enter how much extra you can pay each month. We'll show you two proven strategies and recommend the best one.</div>
   <!-- Strategy selector -->
   <div class="card">
@@ -1031,13 +935,20 @@
       </table>
     </div>
   </div>
-</div>
+  </div><!-- /debt-view-planner -->
 
-<!-- ===== DEBT SNAPSHOT ===== -->
-<div id="sec-debtsnapshot" class="section">
-  <div class="section-header">
-    <div><h2>📋 Debt Snapshot</h2><p>All your debts at a glance — balances, rates, and monthly payments</p></div>
-    <div style="display:flex;gap:8px;align-items:center">
+  <!-- Snapshot view (merged from former Debt Snapshot section) -->
+  <div id="debt-view-snapshot" style="display:none">
+    <!-- Auto-detected debt suggestions -->
+    <div id="ds-suggestions-wrap" style="display:none;margin-bottom:20px">
+      <div class="card" style="border-left:4px solid #f59e0b">
+        <div class="card-title" style="color:#d97706">🔍 Detected Debt Payments <span class="badge" id="ds-suggest-count" style="background:#fef3c7;color:#d97706">0</span></div>
+        <p style="font-size:13px;color:#64748b;margin-bottom:14px">We found these recurring payments in your bank statement that look like debt accounts. Add them to track balances and optimize your payoff plan. <strong>Fill in the balance and APR after importing.</strong></p>
+        <div id="ds-suggestions-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px"></div>
+      </div>
+    </div>
+    <!-- Sort control -->
+    <div style="display:flex;justify-content:flex-end;margin-bottom:16px">
       <select id="ds-sort" class="btn btn-outline btn-sm" onchange="renderDebtSnapshot()" style="font-weight:600">
         <option value="balance-desc">Sort: Highest Balance</option>
         <option value="balance-asc">Sort: Lowest Balance</option>
@@ -1046,43 +957,29 @@
         <option value="payment-desc">Sort: Highest Payment</option>
         <option value="name">Sort: Name A–Z</option>
       </select>
-      <button class="btn btn-primary btn-sm" onclick="navigate('debt')">⚙️ Manage Debts</button>
     </div>
-  </div>
-
-  <!-- Auto-detected debt suggestions (shown after CSV import) -->
-  <div id="ds-suggestions-wrap" style="display:none;margin-bottom:20px">
-    <div class="card" style="border-left:4px solid #f59e0b">
-      <div class="card-title" style="color:#d97706">🔍 Detected Debt Payments <span class="badge" id="ds-suggest-count" style="background:#fef3c7;color:#d97706">0</span></div>
-      <p style="font-size:13px;color:#64748b;margin-bottom:14px">We found these recurring payments in your bank statement that look like debt accounts. Add them to track balances and optimize your payoff plan. <strong>Fill in the balance and APR after importing.</strong></p>
-      <div id="ds-suggestions-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px"></div>
+    <!-- Summary stat bar -->
+    <div class="grid-4" id="ds-stats" style="margin-bottom:20px"></div>
+    <!-- Progress toward zero -->
+    <div class="card" id="ds-progress-card">
+      <div class="card-title">📉 Total Debt Load</div>
+      <div id="ds-progress-wrap"></div>
     </div>
-  </div>
-
-  <!-- Summary stat bar -->
-  <div class="grid-4" id="ds-stats" style="margin-bottom:20px"></div>
-
-  <!-- Progress toward zero -->
-  <div class="card" id="ds-progress-card">
-    <div class="card-title">📉 Total Debt Load</div>
-    <div id="ds-progress-wrap"></div>
-  </div>
-
-  <!-- Debt cards grid -->
-  <div id="ds-cards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;margin-bottom:20px"></div>
-
-  <!-- Full table (compact reference) -->
-  <div class="card">
-    <div class="card-title">📊 Quick Reference Table</div>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>#</th><th>Debt Name</th><th>Type</th><th>Balance</th><th>APR</th><th>Min/Mo</th><th>Monthly Interest</th><th>% of Total Debt</th></tr></thead>
-        <tbody id="ds-table-body"></tbody>
-      </table>
+    <!-- Debt cards grid -->
+    <div id="ds-cards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;margin-bottom:20px"></div>
+    <!-- Quick reference table -->
+    <div class="card">
+      <div class="card-title">📊 Quick Reference Table</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>#</th><th>Debt Name</th><th>Type</th><th>Balance</th><th>APR</th><th>Min/Mo</th><th>Monthly Interest</th><th>% of Total Debt</th></tr></thead>
+          <tbody id="ds-table-body"></tbody>
+        </table>
+      </div>
+      <div id="ds-table-totals" style="display:flex;gap:24px;padding:12px 12px 0;border-top:2px solid #f1f5f9;font-size:13px;font-weight:700;color:#0f172a"></div>
     </div>
-    <div id="ds-table-totals" style="display:flex;gap:24px;padding:12px 12px 0;border-top:2px solid #f1f5f9;font-size:13px;font-weight:700;color:#0f172a"></div>
-  </div>
-</div>
+  </div><!-- /debt-view-snapshot -->
+</div><!-- /sec-debt -->
 
 <!-- ===== GOALS ===== -->
 <div id="sec-goals" class="section">
@@ -1094,37 +991,12 @@
   <div id="goals-list"><div class="empty"><div class="icon">🎯</div><p>No goals yet — set your first one!</p></div></div>
 </div>
 
-<!-- ===== TRENDS ===== -->
-<div id="sec-trends" class="section">
-  <div class="section-header">
-    <div><h2>📊 Trends &amp; Analysis</h2><p>Understand your spending patterns over time</p></div>
-  </div>
-  <div class="grid-4" style="margin-bottom:20px">
-    <div class="stat-card"><div class="label">Avg Monthly Spend</div><div class="value" id="tr-avg-spend">$0</div></div>
-    <div class="stat-card green"><div class="label">Total Income</div><div class="value" id="tr-income">$0</div></div>
-    <div class="stat-card red"><div class="label">Total Expenses</div><div class="value" id="tr-expenses">$0</div></div>
-    <div class="stat-card blue"><div class="label">Savings Rate</div><div class="value" id="tr-savings-rate">0%</div></div>
-  </div>
-  <div class="grid-2">
-    <div class="card">
-      <div class="card-title">💸 Spending by Category</div>
-      <canvas id="chart-cat-donut" height="220"></canvas>
-    </div>
-    <div class="card">
-      <div class="card-title">📅 Monthly Income vs Expenses</div>
-      <canvas id="chart-monthly-bar" height="220"></canvas>
-    </div>
-  </div>
-  <div class="card">
-    <div class="card-title">📋 Spending Breakdown</div>
-    <div id="spending-breakdown"></div>
-  </div>
-</div>
+<!-- Trends section merged into Reports below -->
 
-<!-- ===== REPORTS ===== -->
+<!-- ===== REPORTS & TRENDS ===== -->
 <div id="sec-reports" class="section">
   <div class="section-header">
-    <div><h2>🗒️ Reports</h2><p>Financial summaries and insights for the Robertson family</p></div>
+    <div><h2>📊 Reports &amp; Trends</h2><p>Spending analysis, cash flow, and financial summaries</p></div>
     <div style="display:flex;gap:8px;align-items:center">
       <label style="font-size:13px;color:#64748b">Period:</label>
       <select id="report-period" onchange="renderReports()" style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px">
@@ -1215,39 +1087,43 @@
       <div id="rpt-debt-totals" style="margin-top:12px;padding-top:12px;border-top:1px solid #e2e8f0;font-size:13px"></div>
     </div>
   </div>
+
+  <!-- ── Trends block (merged from former Trends & Analysis section) ── -->
+  <div class="grid-4" style="margin-bottom:20px">
+    <div class="stat-card"><div class="label">Avg Monthly Spend</div><div class="value" id="tr-avg-spend">$0</div><div class="sub">Last 6 months</div></div>
+    <div class="stat-card green"><div class="label">Total Income (period)</div><div class="value" id="tr-income">$0</div></div>
+    <div class="stat-card red"><div class="label">Total Expenses (period)</div><div class="value" id="tr-expenses">$0</div></div>
+    <div class="stat-card blue"><div class="label">Savings Rate</div><div class="value" id="tr-savings-rate">0%</div><div class="sub">Income kept</div></div>
+  </div>
+  <div class="grid-2" style="margin-bottom:20px">
+    <div class="card">
+      <div class="card-title">💸 Spending by Category</div>
+      <canvas id="chart-cat-donut" height="220"></canvas>
+    </div>
+    <div class="card">
+      <div class="card-title">📅 Monthly Income vs Expenses</div>
+      <canvas id="chart-monthly-bar" height="220"></canvas>
+    </div>
+  </div>
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-title">📋 Spending Breakdown by Category</div>
+    <div id="spending-breakdown"></div>
+  </div>
+
+  <!-- Financial Notes (moved from former News section) -->
+  <div class="card">
+    <div class="card-title">📌 Financial Notes</div>
+    <p style="font-size:12px;color:#64748b;margin-bottom:10px">Save headlines or notes that affect your family's finances (rate changes, policy updates, etc.):</p>
+    <div id="news-notes-list" style="margin-bottom:12px"></div>
+    <div style="display:flex;gap:8px">
+      <textarea id="news-note-input" rows="2" placeholder="e.g. Fed raised rates 0.25% — affects our HELOC payment" style="flex:1;padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;resize:vertical"></textarea>
+      <button class="btn btn-primary btn-sm" style="align-self:flex-end" onclick="addNewsNote()">+ Save</button>
+    </div>
+  </div>
+
 </div>
 
-<!-- ===== NEWS ===== -->
-<div id="sec-news" class="section">
-  <div class="section-header">
-    <div><h2>📰 Financial News &amp; Resources</h2><p>Stay informed on news that affects your family's finances</p></div>
-  </div>
-  <div class="tip">💡 <strong>Why this matters:</strong> Interest rate changes, inflation news, and policy changes directly affect your mortgage, credit cards, and savings.</div>
-  <div class="grid-2">
-    <div class="card">
-      <div class="card-title">🔗 News Sources</div>
-      <a class="news-link" href="https://www.cnbc.com/personal-finance/" target="_blank"><div class="nl-icon">📺</div><div><div class="nl-title">CNBC Personal Finance</div><div class="nl-desc">Breaking news on rates, inflation, taxes, and investing</div></div></a>
-      <a class="news-link" href="https://www.nerdwallet.com/h/news" target="_blank"><div class="nl-icon">🤓</div><div><div class="nl-title">NerdWallet News</div><div class="nl-desc">Practical money news and product comparisons</div></div></a>
-      <a class="news-link" href="https://www.bankrate.com/news/" target="_blank"><div class="nl-icon">🏦</div><div><div class="nl-title">Bankrate</div><div class="nl-desc">Interest rates, mortgages, savings, and banking news</div></div></a>
-      <a class="news-link" href="https://www.marketwatch.com/personal-finance" target="_blank"><div class="nl-icon">📈</div><div><div class="nl-title">MarketWatch Personal Finance</div><div class="nl-desc">Markets, retirement, real estate, and debt</div></div></a>
-      <a class="news-link" href="https://www.consumerfinance.gov/about-us/blog/" target="_blank"><div class="nl-icon">🏛</div><div><div class="nl-title">CFPB Blog</div><div class="nl-desc">Consumer protection, rights, and financial guidance</div></div></a>
-      <a class="news-link" href="https://www.irs.gov/newsroom" target="_blank"><div class="nl-icon">📝</div><div><div class="nl-title">IRS Newsroom</div><div class="nl-desc">Tax law changes, deadlines, and refund updates</div></div></a>
-    </div>
-    <div>
-      <div class="card">
-        <div class="card-title">📌 My Financial Notes</div>
-        <p style="font-size:12px;color:#64748b;margin-bottom:10px">Save articles, headlines, or notes that affect your family:</p>
-        <div id="news-notes-list" style="margin-bottom:12px"></div>
-        <div class="form-group"><label>New Note or Headline</label><textarea id="news-note-input" rows="2" placeholder="e.g. Fed raised rates 0.25% — affects our HELOC payment"></textarea></div>
-        <button class="btn btn-primary btn-sm" onclick="addNewsNote()">+ Save Note</button>
-      </div>
-      <div class="card">
-        <div class="card-title">💡 Financial Tips for Families</div>
-        <div id="fin-tips-list"></div>
-      </div>
-    </div>
-  </div>
-</div>
+<!-- Financial News section removed — notes moved into Reports section above -->
 
 <!-- ===== BILL CALENDAR ===== -->
 <div id="sec-calendar" class="section">
@@ -1367,11 +1243,24 @@
 <!-- ===== RECOMMENDATIONS ===== -->
 <div id="sec-recommendations" class="section">
   <div class="section-header">
-    <div><h2>🚨 Financial Recommendations</h2><p>Personalized analysis from your spreadsheet — April 2026</p></div>
-    <button class="btn btn-primary" onclick="navigate('debt')">📊 Open Debt Planner →</button>
+    <div><h2>🚨 Recommendations</h2><p id="rec-subtitle">Personalized analysis based on your current data</p></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-outline btn-sm" onclick="renderDynamicRecommendations()">🔄 Refresh</button>
+      <button class="btn btn-primary btn-sm" onclick="navigate('debt')">📊 Debt Planner →</button>
+    </div>
   </div>
 
-  <!-- Health Score -->
+  <!-- Dynamic content rendered here -->
+  <div id="rec-dynamic-content"></div>
+
+  <!-- Historical analysis (collapsible) -->
+  <details style="margin-top:20px">
+    <summary style="cursor:pointer;font-size:13px;font-weight:700;color:#64748b;padding:12px 16px;background:#f8fafc;border-radius:10px;list-style:none;display:flex;align-items:center;gap:8px">
+      <span>📋</span> Prior Analysis — April 2026 spreadsheet review <span style="margin-left:auto;font-weight:400;font-size:11px">▼ expand</span>
+    </summary>
+    <div style="border:1px solid #e2e8f0;border-radius:0 0 10px 10px;padding:20px;border-top:none;background:#fff">
+
+  <!-- Health Score (historical) -->
   <div style="background:linear-gradient(135deg,#1e293b,#0f172a);border-radius:16px;padding:28px;color:#fff;margin-bottom:20px">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:20px">
       <div>
@@ -1559,10 +1448,13 @@
       </div>
       <div style="display:flex;gap:12px;padding:10px 0">
         <span style="background:#fef3c7;color:#92400e;border-radius:6px;padding:2px 8px;font-weight:700;font-size:11px;flex-shrink:0;height:fit-content;margin-top:1px">WEEK 4</span>
-        <div>Import your US Bank CSV into the Bank Statements tab. Let the dashboard auto-detect recurring bills, confirm them, and run the full debt analysis with real balances. Set your first financial goal: a $1,000 emergency fund.</div>
+        <div>Import your US Bank CSV into the Transactions tab. Let the dashboard auto-detect recurring bills, confirm them, and run the full debt analysis with real balances. Set your first financial goal: a $1,000 emergency fund.</div>
       </div>
     </div>
   </div>
+
+    </div><!-- /historical analysis body -->
+  </details>
 
 </div>
 
@@ -2188,6 +2080,7 @@ async function syncBankAccounts() {
     clearTimeout(_saveCloudTimer);
     _saveCloudTimer = null;
 
+    S.simplefinLastSync = new Date().toISOString();
     renderAll();
     toast(`🏦 Sync complete — ${json.newTransactions} new transaction${json.newTransactions !== 1 ? 's' : ''}`);
   } catch(e) {
@@ -2204,11 +2097,13 @@ async function signOut() {
 }
 
 function renderAll() {
-  try { renderBills();       } catch(e){}
-  try { renderTransactions();} catch(e){}
-  try { refreshOverview();   } catch(e){}
-  try { renderDebts();       } catch(e){}
-  try { renderAccounts();    } catch(e){}
+  try { renderBills();           } catch(e){}
+  try { renderTransactions();    } catch(e){}
+  try { refreshOverview();       } catch(e){}
+  try { renderDebts();           } catch(e){}
+  try { renderAccounts();        } catch(e){}
+  try { updateSidebarStrip();    } catch(e){}
+  try { updateNavBadges();       } catch(e){}
 }
 
 function defaultState() {
@@ -2230,7 +2125,8 @@ function defaultState() {
     dismissedDebtSuggestions: [],
     dismissedPaycheckSuggestions: [],
     accounts: [],
-    accActiveGroup: 'banking'
+    accActiveGroup: 'banking',
+    simplefinLastSync: null
   };
 }
 
@@ -2522,28 +2418,144 @@ function _renderDebtTimeline() {
 function navigate(section) {
   document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
   document.querySelectorAll('nav a').forEach(a=>a.classList.remove('active'));
-  document.getElementById('sec-'+section).classList.add('active');
-  document.querySelector(`nav a[data-section="${section}"]`).classList.add('active');
+  const sec = document.getElementById('sec-'+section);
+  if(!sec) return;
+  sec.classList.add('active');
+  const link = document.querySelector(`nav a[data-section="${section}"]`);
+  if(link) link.classList.add('active');
   // Render section-specific content
   if(section==='overview') refreshOverview();
-  if(section==='trends') renderTrends();
+  if(section==='reports') { renderReports(); renderTrends(); renderNewsNotes(); }
   if(section==='accounts') renderAccounts();
   if(section==='billplan') initBillPlan();
   if(section==='debt') { renderDebts(); fillDebtIncome(); }
-  if(section==='debtsnapshot') renderDebtSnapshot();
   if(section==='goals') renderGoals();
   if(section==='bills') renderBills();
   if(section==='pending') renderPending();
-  if(section==='bank') { renderTransactions(); renderQFXBalanceSummary(); }
-  if(section==='news') renderNewsNotes();
+  if(section==='bank') { renderTransactions(); renderQFXBalanceSummary(); renderUSBankNotes(); }
   if(section==='settings') loadSettingsForm();
-  if(section==='usbank') { renderUSBankNotes(); renderUSBankSummary(); }
-  if(section==='recommendations') {} // static content
-  if(section==='reports') renderReports();
+  if(section==='recommendations') renderDynamicRecommendations();
   if(section==='calendar') renderCalendar();
   if(section==='paycheck') renderPaychecks();
   if(section==='networth') renderNetWorth();
   if(section==='envelopes') { initEnvelopes(); renderEnvelopes(); }
+}
+
+// ── Debt tab toggle ──────────────────────────────────────────────────────────
+function showDebtTab(tab) {
+  document.getElementById('debt-view-planner').style.display  = tab==='planner'  ? '' : 'none';
+  document.getElementById('debt-view-snapshot').style.display = tab==='snapshot' ? '' : 'none';
+  document.getElementById('debt-tab-planner').classList.toggle('active',  tab==='planner');
+  document.getElementById('debt-tab-snapshot').classList.toggle('active', tab==='snapshot');
+  if(tab==='snapshot') renderDebtSnapshot();
+}
+
+// ── Sidebar live balance strip ───────────────────────────────────────────────
+function updateSidebarStrip() {
+  const hasSf = (S.accounts||[]).some(a=>a.source==='simplefin');
+  const chkAccts = (S.accounts||[]).filter(a=>
+    a.type==='checking' && (hasSf ? a.source==='simplefin' : true)
+  );
+  const bal = chkAccts.reduce((s,a)=>s+(parseFloat(a.balance)||0),0);
+  const el = document.getElementById('sb-balance');
+  if(el) {
+    el.textContent = chkAccts.length ? fmt(bal) : '—';
+    el.style.color = bal >= 0 ? '#22c55e' : '#ef4444';
+  }
+  // Last sync time
+  const sfConfig = S.simplefinLastSync || null;
+  const syncEl = document.getElementById('sb-sync-time');
+  if(syncEl && sfConfig) {
+    const diff = Math.round((Date.now() - new Date(sfConfig).getTime()) / 60000);
+    syncEl.textContent = diff < 60 ? `Synced ${diff}m ago` :
+      diff < 1440 ? `Synced ${Math.round(diff/60)}h ago` : `Synced ${Math.round(diff/1440)}d ago`;
+  } else if(syncEl) {
+    syncEl.textContent = (S.accounts||[]).some(a=>a.source==='simplefin') ? 'Synced' : 'Not synced yet';
+  }
+}
+
+// ── Nav badges ───────────────────────────────────────────────────────────────
+function updateNavBadges() {
+  // Bills badge — count overdue + due today
+  const today = new Date(); const todayDay = today.getDate();
+  const overdue = (S.bills||[]).filter(b=>!b.paid && b.dueDay && b.dueDay <= todayDay);
+  const billBadge = document.getElementById('nav-bills-badge');
+  if(billBadge) {
+    if(overdue.length > 0) { billBadge.textContent=overdue.length; billBadge.style.display='inline'; }
+    else billBadge.style.display='none';
+  }
+  // Envelopes badge — count over-budget categories
+  const curMonthStr = today.toISOString().slice(0,7);
+  const limits = S.envelopeLimits||{};
+  const cats = Object.keys(limits);
+  let over = 0;
+  cats.forEach(cat=>{
+    const spent = (S.transactions||[])
+      .filter(t=>normalizeDate(t.date).startsWith(curMonthStr) && (t.category||'').toLowerCase()===cat.toLowerCase() && (parseFloat(t.amount)||0)<0)
+      .reduce((s,t)=>s+Math.abs(parseFloat(t.amount)||0),0);
+    if(limits[cat]>0 && spent>limits[cat]) over++;
+  });
+  const envBadge = document.getElementById('nav-env-badge');
+  if(envBadge) {
+    if(over>0) { envBadge.textContent=over+' over'; envBadge.style.display='inline'; }
+    else envBadge.style.display='none';
+  }
+}
+
+// ── Dynamic Health Score ─────────────────────────────────────────────────────
+function computeHealthScore() {
+  let score = 100; const issues = [];
+  const income = parseFloat(S.settings?.income)||0;
+  const totalDebt = (S.debts||[]).reduce((s,d)=>s+(parseFloat(d.balance)||0),0);
+  const minPayments = (S.debts||[]).reduce((s,d)=>s+(parseFloat(d.minPayment)||0),0);
+  const billTotal = (S.bills||[]).filter(b=>!b.disabled).reduce((s,b)=>s+(parseFloat(b.amount)||0),0);
+  const totalObligations = minPayments + billTotal;
+  // Debt-to-income ratio
+  const dti = income>0 ? totalDebt/(income*12) : 0;
+  if(dti>4) { score-=30; issues.push({sev:'red',msg:`High debt-to-income (${(dti).toFixed(1)}× annual income)`}); }
+  else if(dti>2) { score-=15; issues.push({sev:'amber',msg:`Elevated debt-to-income (${(dti).toFixed(1)}× annual income)`}); }
+  // Obligations vs income
+  const oblRatio = income>0 ? totalObligations/income : 0;
+  if(oblRatio>0.9) { score-=25; issues.push({sev:'red',msg:`${Math.round(oblRatio*100)}% of income committed to bills/debt minimums`}); }
+  else if(oblRatio>0.7) { score-=12; issues.push({sev:'amber',msg:`${Math.round(oblRatio*100)}% of income goes to fixed obligations`}); }
+  // High-interest debt
+  const hiDebt = (S.debts||[]).filter(d=>parseFloat(d.apr||d.interest||0)>=25);
+  if(hiDebt.length>2) { score-=15; issues.push({sev:'amber',msg:`${hiDebt.length} accounts with APR ≥ 25%`}); }
+  // Overdue bills
+  const today = new Date(); const todayDay = today.getDate();
+  const overdueBills = (S.bills||[]).filter(b=>!b.paid && b.dueDay && b.dueDay<=todayDay);
+  if(overdueBills.length>0) { score-=10; issues.push({sev:'amber',msg:`${overdueBills.length} overdue bill${overdueBills.length>1?'s':''}`}); }
+  // No emergency fund goal
+  const hasEmergencyGoal = (S.goals||[]).some(g=>(g.name||'').toLowerCase().includes('emergency'));
+  if(!hasEmergencyGoal) { score-=5; issues.push({sev:'green',msg:'No emergency fund goal set'}); }
+  score = Math.max(0, Math.min(100, Math.round(score)));
+  return { score, issues };
+}
+
+function renderHealthScore() {
+  const banner = document.getElementById('ov-health-banner');
+  if(!banner) return;
+  const { score, issues } = computeHealthScore();
+  if(score===100 && issues.length===0) { banner.style.display='none'; return; }
+  const color = score>=70?'#16a34a':score>=45?'#d97706':'#dc2626';
+  const bg    = score>=70?'#f0fdf4':score>=45?'#fffbeb':'#fff5f5';
+  const border= score>=70?'#bbf7d0':score>=45?'#fde68a':'#fecaca';
+  const label = score>=70?'Good':'Fair';
+  const issueHtml = issues.slice(0,3).map(i=>`
+    <span style="display:inline-flex;align-items:center;gap:5px;background:#fff;border:1px solid #e2e8f0;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:600;color:#374151;white-space:nowrap">
+      <span style="color:${i.sev==='red'?'#dc2626':i.sev==='amber'?'#d97706':'#16a34a'}">●</span>${i.msg}
+    </span>`).join('');
+  banner.style.display='flex';
+  banner.style.background=bg;
+  banner.style.border=`1px solid ${border}`;
+  banner.innerHTML=`
+    <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+      <div style="width:48px;height:48px;border-radius:50%;background:${color};color:#fff;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:900;line-height:1">${score}</div>
+      <div style="font-size:11px;font-weight:700;color:${color};text-transform:uppercase;letter-spacing:.04em">${label}</div>
+    </div>
+    <div style="font-size:12px;font-weight:700;color:#374151;flex-shrink:0">Financial Health</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">${issueHtml}</div>
+  `;
 }
 
 // Sidebar clicks
@@ -7117,6 +7129,219 @@ function runAutoSetup() {
 // ============================================================
 // RECONCILE FROM BANK SYNC
 // ============================================================
+// ============================================================
+// DYNAMIC RECOMMENDATIONS
+// ============================================================
+function renderDynamicRecommendations() {
+  const el = document.getElementById('rec-dynamic-content');
+  const sub = document.getElementById('rec-subtitle');
+  if(!el) return;
+
+  const income      = parseFloat(S.settings?.income)||0;
+  const debts       = S.debts||[];
+  const bills       = (S.bills||[]).filter(b=>!b.disabled);
+  const txns        = S.transactions||[];
+  const goals       = S.goals||[];
+  const curMonth    = new Date().toISOString().slice(0,7);
+  const sfTxns      = txns.filter(t=>t.source==='simplefin');
+
+  // Computed figures
+  const totalDebt       = debts.reduce((s,d)=>s+(parseFloat(d.balance)||0),0);
+  const minPayments     = debts.reduce((s,d)=>s+(parseFloat(d.minPayment)||0),0);
+  const billTotal       = bills.reduce((s,b)=>s+(parseFloat(b.amount)||0),0);
+  const totalObligations= minPayments + billTotal;
+  const breathingRoom   = income - totalObligations;
+  const oblRatio        = income>0 ? totalObligations/income : 0;
+  const { score }       = computeHealthScore();
+  const scoreColor      = score>=70?'#16a34a':score>=45?'#d97706':'#dc2626';
+
+  // Update subtitle
+  if(sub) sub.textContent = `As of ${new Date().toLocaleDateString('en-US',{month:'long',year:'numeric'})} — updates live from your data`;
+
+  // Identify issues
+  const redIssues=[], amberIssues=[], greenItems=[];
+
+  // Obligation ratio
+  if(income>0 && oblRatio>0.9) redIssues.push({
+    title:`${Math.round(oblRatio*100)}% of income committed to bills and debt minimums`,
+    body:`After all fixed obligations, only ${fmt(Math.abs(breathingRoom))}/month remains for food, gas, and everything else.${breathingRoom<0?' <strong>You are currently spending more than you earn on fixed obligations alone.</strong>':' That is very tight — any unexpected expense goes to debt.'}`
+  });
+  else if(income>0 && oblRatio>0.7) amberIssues.push({
+    title:`${Math.round(oblRatio*100)}% of income goes to fixed obligations`,
+    body:`${fmt(breathingRoom)}/month left after bills and minimums. Reducing even one debt or subscription unlocks real breathing room.`
+  });
+
+  // High-interest debts
+  const hiDebt = debts.filter(d=>(parseFloat(d.apr||d.interest||0))>=24).sort((a,b)=>parseFloat(b.apr||b.interest||0)-parseFloat(a.apr||a.interest||0));
+  if(hiDebt.length>0) {
+    const hiTotal = hiDebt.reduce((s,d)=>s+(parseFloat(d.balance)||0),0);
+    const hiInterest = hiDebt.reduce((s,d)=>s+(parseFloat(d.balance)||0)*(parseFloat(d.apr||d.interest||0)/100/12),0);
+    amberIssues.push({
+      title:`${hiDebt.length} account${hiDebt.length>1?'s':''} at 24%+ APR — costing ${fmt(hiInterest)}/month in interest`,
+      body:`Highest rate: ${hiDebt[0].name} at ${parseFloat(hiDebt[0].apr||hiDebt[0].interest||0).toFixed(1)}%. Total high-interest balance: ${fmt(hiTotal)}. Attack these with every extra dollar after minimums.`
+    });
+  }
+
+  // BNPL / rent-to-own
+  const bnplDebts = debts.filter(d=>(d.type||'').toLowerCase().includes('bnpl')||(d.name||'').toLowerCase().match(/afterpay|zip|acima|katapult|sezzle|klarna|rent.a.center|leaseville/));
+  if(bnplDebts.length>=2) amberIssues.push({
+    title:`${bnplDebts.length} Buy-Now-Pay-Later / rent-to-own accounts active`,
+    body:`Combined payments: ${fmt(bnplDebts.reduce((s,d)=>s+(parseFloat(d.minPayment)||0),0))}/month. BNPL fragments your cash flow and carries effective APRs of 20–36% when fees are counted. Stop new BNPL purchases and pay these off smallest-first.`
+  });
+
+  // Streaming subscriptions
+  const streamingBills = bills.filter(b=>(b.category||'').toLowerCase()==='entertainment'||(b.name||'').toLowerCase().match(/netflix|hulu|disney|amazon prime|prime video|spotify|apple music|paramount|peacock|max|discovery|hallmark|cinemark|amc\+|showtime|starz/));
+  if(streamingBills.length>=4) {
+    const streamTotal = streamingBills.reduce((s,b)=>s+(parseFloat(b.amount)||0),0);
+    amberIssues.push({
+      title:`${streamingBills.length} streaming/entertainment subscriptions = ${fmt(streamTotal)}/month`,
+      body:`Review each one. Keep your top 2–3 you actually watch. Cancel the rest — even ${fmt(streamTotal*0.5)}/month savings redirected to your highest-rate debt adds up fast.`
+    });
+  }
+
+  // Overdue bills
+  const today = new Date(); const todayDay = today.getDate();
+  const overdue = bills.filter(b=>!b.paid && b.dueDay && b.dueDay<=todayDay);
+  if(overdue.length>0) redIssues.push({
+    title:`${overdue.length} bill${overdue.length>1?'s are':' is'} overdue or due today`,
+    body:overdue.map(b=>`<strong>${b.name}</strong> — ${fmt(b.amount)} due day ${b.dueDay}`).join(' · ')
+  });
+
+  // No emergency fund
+  const hasEF = goals.some(g=>(g.name||'').toLowerCase().includes('emergency'));
+  if(!hasEF) amberIssues.push({
+    title:'No emergency fund goal set',
+    body:`An emergency fund of ${income>0?fmt(income*3):'3 months of expenses'} would prevent any unexpected expense from becoming new debt. Start with a goal of $1,000 — add it in Financial Goals.`
+  });
+
+  // Debt-free milestone
+  if(debts.length>0 && minPayments>0) {
+    const smallest = [...debts].sort((a,b)=>parseFloat(a.balance||0)-parseFloat(b.balance||0))[0];
+    const smBal = parseFloat(smallest.balance||0);
+    const smPmt = parseFloat(smallest.minPayment||0);
+    if(smBal>0 && smPmt>0) {
+      const moToKill = Math.ceil(smBal/smPmt);
+      greenItems.push({
+        title:`Quick win: ${smallest.name} (${fmt(smBal)}) can be paid off in ~${moToKill} month${moToKill>1?'s':''}`,
+        body:`Paying off this account eliminates the monthly obligation and frees ${fmt(smPmt)}/month to roll onto the next debt (debt snowball).`
+      });
+    }
+  }
+
+  // Good habits
+  if(goals.length>0) greenItems.push({ title:`${goals.length} financial goal${goals.length>1?'s':''} set`, body:'Tracking goals keeps progress visible. Review them monthly.' });
+  if(sfTxns.length>0) greenItems.push({ title:'Bank sync active', body:`${sfTxns.length} transactions imported from your bank. Your spending picture is accurate.` });
+
+  // ── Render the health score header ──
+  let html = `
+    <div style="background:linear-gradient(135deg,#1e293b,#0f172a);border-radius:16px;padding:24px;color:#fff;margin-bottom:20px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px">
+        <div>
+          <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Financial Health Score</div>
+          <div style="font-size:56px;font-weight:900;color:${scoreColor};line-height:1">${score}<span style="font-size:24px">/100</span></div>
+          <div style="font-size:12px;color:#94a3b8;margin-top:6px">Based on debt-to-income, obligations ratio, and bill status</div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;min-width:300px">
+          <div style="background:rgba(255,255,255,.07);border-radius:10px;padding:12px">
+            <div style="font-size:10px;color:#94a3b8;margin-bottom:3px">MONTHLY INCOME</div>
+            <div style="font-size:18px;font-weight:800;color:#22c55e">${income>0?fmt(income):'Not set'}</div>
+          </div>
+          <div style="background:rgba(255,255,255,.07);border-radius:10px;padding:12px">
+            <div style="font-size:10px;color:#94a3b8;margin-bottom:3px">BILLS + MINIMUMS</div>
+            <div style="font-size:18px;font-weight:800;color:#ef4444">${fmt(totalObligations)}</div>
+          </div>
+          <div style="background:rgba(255,255,255,.07);border-radius:10px;padding:12px">
+            <div style="font-size:10px;color:#94a3b8;margin-bottom:3px">TOTAL DEBT</div>
+            <div style="font-size:18px;font-weight:800;color:#f59e0b">${fmt(totalDebt)}</div>
+          </div>
+          <div style="background:rgba(255,255,255,.07);border-radius:10px;padding:12px">
+            <div style="font-size:10px;color:#94a3b8;margin-bottom:3px">BREATHING ROOM</div>
+            <div style="font-size:18px;font-weight:800;color:${breathingRoom>=500?'#22c55e':breathingRoom>=0?'#f59e0b':'#ef4444'}">${fmt(breathingRoom)}/mo</div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  // Red issues
+  if(redIssues.length>0) {
+    html+=`<div class="card" style="border-left:4px solid #dc2626;margin-bottom:20px">
+      <div class="card-title" style="color:#dc2626">🔴 Critical — Act Now</div>
+      ${redIssues.map(i=>`
+        <div style="border:1px solid #fee2e2;border-radius:10px;padding:14px;margin-bottom:10px;background:#fff5f5">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px">
+            <div style="font-weight:700;font-size:13px">${i.title}</div>
+            <span class="badge-red" style="flex-shrink:0">URGENT</span>
+          </div>
+          <p style="font-size:12px;color:#374151">${i.body}</p>
+        </div>`).join('')}
+    </div>`;
+  }
+
+  // Amber issues
+  if(amberIssues.length>0) {
+    html+=`<div class="card" style="border-left:4px solid #f59e0b;margin-bottom:20px">
+      <div class="card-title" style="color:#d97706">🟡 Address Soon</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px">
+        ${amberIssues.map(i=>`
+          <div style="border:1px solid #fef3c7;border-radius:10px;padding:14px;background:#fffbeb">
+            <div style="font-weight:700;font-size:13px;margin-bottom:6px">${i.title}</div>
+            <p style="font-size:12px;color:#374151">${i.body}</p>
+          </div>`).join('')}
+      </div>
+    </div>`;
+  }
+
+  // Green items
+  if(greenItems.length>0) {
+    html+=`<div class="card" style="border-left:4px solid #16a34a;margin-bottom:20px">
+      <div class="card-title" style="color:#16a34a">✅ Working In Your Favor</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">
+        ${greenItems.map(i=>`
+          <div style="background:#f0fdf4;border-radius:10px;padding:14px">
+            <div style="font-weight:700;font-size:13px;margin-bottom:4px">${i.title}</div>
+            <p style="font-size:12px;color:#374151">${i.body}</p>
+          </div>`).join('')}
+      </div>
+    </div>`;
+  }
+
+  // Empty state
+  if(redIssues.length===0 && amberIssues.length===0) {
+    html+=`<div class="card" style="text-align:center;padding:40px">
+      <div style="font-size:48px;margin-bottom:12px">🎉</div>
+      <div style="font-weight:700;font-size:16px;color:#16a34a;margin-bottom:8px">Your finances look solid!</div>
+      <p style="font-size:13px;color:#64748b">No critical or urgent issues detected. Keep building your emergency fund and attacking debt.</p>
+    </div>`;
+  }
+
+  // Debt payoff order (from live debts)
+  if(debts.length>0) {
+    const sorted = [...debts].filter(d=>parseFloat(d.balance)>0).sort((a,b)=>parseFloat(b.apr||b.interest||0)-parseFloat(a.apr||a.interest||0));
+    if(sorted.length>0) {
+      const colors = ['#dc2626','#dc2626','#f59e0b','#f59e0b','#3b82f6'];
+      html+=`<div class="card">
+        <div class="card-title">⚡ Avalanche Payoff Order <span style="font-size:11px;font-weight:400;color:#64748b">— highest rate first</span></div>
+        <p style="font-size:13px;color:#64748b;margin-bottom:14px">Pay minimums on everything. Put every extra dollar toward #1 until gone, then roll that payment to #2.</p>
+        ${sorted.map((d,i)=>{
+          const apr = parseFloat(d.apr||d.interest||0);
+          const bal = parseFloat(d.balance)||0;
+          const pmt = parseFloat(d.minPayment)||50;
+          const mo  = Math.ceil(bal/pmt);
+          const badge = mo<=3?'badge-green':mo<=12?'badge-amber':'badge-blue';
+          const badge_text = mo<=3?`~${mo} mo`:mo<=24?`~${mo} mo`:'long-term';
+          return `<div style="display:flex;align-items:center;gap:12px;padding:10px;border-bottom:1px solid #f1f5f9">
+            <div style="background:${colors[Math.min(i,4)]};color:#fff;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;flex-shrink:0">${i+1}</div>
+            <div style="flex:1"><strong>${d.name}</strong> — ${fmt(bal)} at ${apr.toFixed(1)}% APR</div>
+            <span class="${badge}">${badge_text}</span>
+          </div>`;
+        }).join('')}
+      </div>`;
+    }
+  }
+
+  el.innerHTML = html;
+}
+
 function reconcileFromBankSync() {
   const sfTxns = S.transactions.filter(t => t.source === 'simplefin');
   if (!sfTxns.length) {
@@ -7522,6 +7747,43 @@ function refreshOverview() {
     monthCtx.style.display = 'none';
     if(monthEmpty) monthEmpty.style.display = '';
   }
+
+  // ── Savings Rate card ─────────────────────────────────────
+  const srEl   = document.getElementById('ov-savings-rate');
+  const srCard = document.getElementById('ov-savings-card');
+  const srSub  = document.getElementById('ov-savings-sub');
+  if(srEl) {
+    if(income > 0) {
+      const saved = income - expenses;
+      const rate  = Math.round((saved / income) * 100);
+      srEl.textContent = rate + '%';
+      srEl.style.color = rate >= 20 ? '#16a34a' : rate >= 10 ? '#d97706' : '#dc2626';
+      if(srCard) srCard.className = 'stat-card ' + (rate>=20?'green':rate>=10?'amber':'red');
+      if(srSub) srSub.textContent = rate >= 0 ? `${fmt(saved)} saved this month` : `${fmt(Math.abs(saved))} overspent`;
+    } else {
+      srEl.textContent = '—';
+      if(srSub) srSub.textContent = 'Set income in Settings';
+    }
+  }
+
+  // ── Net Worth card ────────────────────────────────────────
+  const nwEl = document.getElementById('ov-networth');
+  if(nwEl) {
+    const assets = (S.assets||[]).reduce((s,a)=>s+(parseFloat(a.value)||0),0)
+      + (S.accounts||[]).filter(a=>['checking','savings'].includes(a.type)).reduce((s,a)=>s+(parseFloat(a.balance)||0),0);
+    const liabilities = (S.debts||[]).reduce((s,d)=>s+(parseFloat(d.balance)||0),0)
+      + (S.accounts||[]).filter(a=>['credit_card','loan','mortgage'].includes(a.type)).reduce((s,a)=>s+Math.abs(parseFloat(a.balance)||0),0);
+    const nw = assets - liabilities;
+    nwEl.textContent = nw === 0 && assets === 0 ? '—' : fmt(nw);
+    nwEl.style.color = nw >= 0 ? '#16a34a' : '#dc2626';
+    const nwCard = document.getElementById('ov-networth-card');
+    if(nwCard) nwCard.className = 'stat-card ' + (nw>=0?'green':'red');
+  }
+
+  // ── Health score banner + sidebar strip + nav badges ─────
+  renderHealthScore();
+  updateSidebarStrip();
+  updateNavBadges();
 }
 
 // ============================================================
