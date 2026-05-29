@@ -2126,7 +2126,8 @@ function defaultState() {
     dismissedPaycheckSuggestions: [],
     accounts: [],
     accActiveGroup: 'banking',
-    simplefinLastSync: null
+    simplefinLastSync: null,
+    excludedAccounts: []   // account IDs excluded from balance totals (e.g. closed/inactive)
   };
 }
 
@@ -2450,11 +2451,24 @@ function showDebtTab(tab) {
   if(tab==='snapshot') renderDebtSnapshot();
 }
 
+// ── Toggle account active/inactive (exclude from balance totals) ─────────────
+function toggleExcludeAccount(id) {
+  if (!S.excludedAccounts) S.excludedAccounts = [];
+  const idx = S.excludedAccounts.indexOf(id);
+  if (idx >= 0) S.excludedAccounts.splice(idx, 1);
+  else S.excludedAccounts.push(id);
+  saveStateCloud();
+  renderAccounts();
+  refreshOverview();
+  toast(S.excludedAccounts.includes(id) ? '⛔ Account marked inactive — excluded from totals' : '✅ Account set active — included in totals');
+}
+
 // ── Sidebar live balance strip ───────────────────────────────────────────────
 function updateSidebarStrip() {
   const hasSf = (S.accounts||[]).some(a=>a.source==='simplefin');
   const chkAccts = (S.accounts||[]).filter(a=>
     a.type==='checking' && (hasSf ? a.source==='simplefin' : true)
+    && !(S.excludedAccounts||[]).includes(a.id)
   );
   const bal = chkAccts.reduce((s,a)=>s+(parseFloat(a.balance)||0),0);
   const el = document.getElementById('sb-balance');
@@ -5305,24 +5319,37 @@ function renderAccounts() {
       if (sfAsOf && latestDate) {
         sfAsOf.textContent = '· as of ' + new Date(latestDate).toLocaleDateString('en-US', {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
       }
+      const excluded = S.excludedAccounts || [];
       sfGrid.innerHTML = sfAccts.map(a => {
         const posted    = parseFloat(a.balance) || 0;
         const available = parseFloat(a.availableBalance) || 0;
-        const pending   = posted - available; // positive = pending outflows reduce available
-        const color     = posted >= 0 ? '#16a34a' : '#dc2626';
-        return `<div class="card" style="border-left:4px solid #3b82f6">
+        const pending   = posted - available;
+        const isExcluded = excluded.includes(a.id);
+        const color     = isExcluded ? '#94a3b8' : (posted >= 0 ? '#16a34a' : '#dc2626');
+        const borderColor = isExcluded ? '#e2e8f0' : '#3b82f6';
+        const idSafe    = escQ(a.id);
+        return `<div class="card" style="border-left:4px solid ${borderColor};opacity:${isExcluded?0.65:1}">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px">
             <div>
               <div style="font-size:13px;font-weight:700;color:#1e293b">${a.name || 'Account'}</div>
               <div style="font-size:11px;color:#94a3b8">${a.org || ''}</div>
             </div>
-            <span style="font-size:10px;background:#dbeafe;color:#1d4ed8;padding:2px 8px;border-radius:10px;font-weight:600">SYNCED</span>
+            <div style="display:flex;gap:6px;align-items:center">
+              ${isExcluded
+                ? `<span style="font-size:10px;background:#f1f5f9;color:#64748b;padding:2px 8px;border-radius:10px;font-weight:600">INACTIVE</span>`
+                : `<span style="font-size:10px;background:#dbeafe;color:#1d4ed8;padding:2px 8px;border-radius:10px;font-weight:600">PRIMARY</span>`}
+              <button onclick="toggleExcludeAccount('${idSafe}')"
+                style="font-size:10px;padding:2px 8px;border-radius:10px;border:1px solid #e2e8f0;background:#fff;cursor:pointer;color:#64748b;font-weight:600"
+                title="${isExcluded?'Mark as active — include in balance totals':'Mark as inactive — exclude from balance totals'}">
+                ${isExcluded ? '✅ Set Active' : '⛔ Set Inactive'}
+              </button>
+            </div>
           </div>
           <div style="margin:10px 0 4px">
             <div style="font-size:26px;font-weight:800;color:${color}">\$${posted.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
-            <div style="font-size:11px;color:#64748b;margin-top:1px">Posted balance · matches online (no pending)</div>
+            <div style="font-size:11px;color:#64748b;margin-top:1px">${isExcluded ? 'Excluded from balance totals' : 'Posted balance · matches online (no pending)'}</div>
           </div>
-          ${Math.abs(pending) > 0.005 ? `<div style="margin-top:8px;padding:6px 10px;background:#fef9c3;border-radius:6px;font-size:12px;color:#854d0e">
+          ${Math.abs(pending) > 0.005 && !isExcluded ? `<div style="margin-top:8px;padding:6px 10px;background:#fef9c3;border-radius:6px;font-size:12px;color:#854d0e">
             ⏳ ${pending > 0 ? '-' : '+'}$${Math.abs(pending).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})} pending → Available: $${available.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
           </div>` : ''}
           ${a.currency && a.currency !== 'USD' ? `<div style="font-size:11px;color:#94a3b8;margin-top:4px">${a.currency}</div>` : ''}
@@ -5338,10 +5365,10 @@ function renderAccounts() {
   // Never double-count both for the same type.
   const hasSf = S.accounts.some(a => a.source === 'simplefin');
   const checking = S.accounts
-    .filter(a => a.type === 'checking' && (hasSf ? a.source === 'simplefin' : a.source !== 'simplefin'))
+    .filter(a => a.type === 'checking' && (hasSf ? a.source === 'simplefin' : a.source !== 'simplefin') && !(S.excludedAccounts||[]).includes(a.id))
     .reduce((s, a) => s + (parseFloat(a.balance) || 0), 0);
   const savings = S.accounts
-    .filter(a => a.type === 'savings'  && (hasSf ? a.source === 'simplefin' : a.source !== 'simplefin'))
+    .filter(a => a.type === 'savings'  && (hasSf ? a.source === 'simplefin' : a.source !== 'simplefin') && !(S.excludedAccounts||[]).includes(a.id))
     .reduce((s, a) => s + (parseFloat(a.balance) || 0), 0);
   const ccBal     = S.accounts.filter(a => a.type === 'credit_card').reduce((s, a) => s + (parseFloat(a.ccBalance) || 0), 0);
   const loanBal   = S.accounts.filter(a => ['auto_loan','student_loan','bnpl'].includes(a.type)).reduce((s, a) => s + (parseFloat(a.lnBalance) || 0), 0);
@@ -7574,7 +7601,7 @@ function refreshOverview() {
 
   // 1. SimpleFIN live bank sync — always most current, show each account individually
   if (S.accounts) {
-    const sfAll = S.accounts.filter(a => a.source === 'simplefin');
+    const sfAll = S.accounts.filter(a => a.source === 'simplefin' && !(S.excludedAccounts||[]).includes(a.id));
     if (sfAll.length) {
       const latestDate = sfAll.map(a => a.balanceDate).filter(Boolean).sort().pop();
       const syncedStr  = latestDate
